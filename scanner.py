@@ -292,10 +292,29 @@ async def start_user_scanner(username: str):
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    data_dir = os.environ.get("DATA_DIR", "(not set, using current dir)")
+    data_dir = os.environ.get("DATA_DIR", "(not set)")
     logger.info(f"Drendel Gap Scanner started. DATA_DIR={data_dir}")
-    logger.info(f"Auth file path: {auth._auth_path()}")
-    logger.info(f"Auth file exists: {auth._auth_path().exists()}")
+    
+    # Ensure data directory is ready (volume might take a moment to mount)
+    resolved = auth._data_dir()
+    resolved.mkdir(parents=True, exist_ok=True)
+    
+    auth_path = auth._auth_path()
+    logger.info(f"Auth file path: {auth_path}")
+    logger.info(f"Auth file exists: {auth_path.exists()}")
+    
+    # If DATA_DIR is set but auth file doesn't exist, check if volume is mounted
+    if data_dir != "(not set)" and not auth_path.exists():
+        logger.warning(f"Auth file not found at {auth_path}. Volume may still be mounting...")
+        # Wait a few seconds for volume mount
+        for i in range(10):
+            await asyncio.sleep(1)
+            if auth_path.exists():
+                logger.info(f"Auth file appeared after {i+1}s wait.")
+                break
+        else:
+            logger.warning(f"Auth file still not found after 10s. Users will need to re-register.")
+    
     yield
     # Cleanup all user scanners
     for username, task in user_tasks.items():
