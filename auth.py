@@ -16,17 +16,17 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 _cached_data_dir = None
 
 def _data_dir() -> Path:
-    """Read DATA_DIR from env once, then cache it for the lifetime of the process."""
+    """Read DATA_DIR from env. Cached after first call."""
     global _cached_data_dir
     if _cached_data_dir is not None:
         return _cached_data_dir
     raw = os.environ.get("DATA_DIR", "")
     if raw:
-        _cached_data_dir = Path(raw)
+        p = Path(raw)
     else:
-        # Fallback: use a 'data' subdirectory next to the script, not cwd
-        _cached_data_dir = Path(__file__).resolve().parent / "data"
-    _cached_data_dir.mkdir(parents=True, exist_ok=True)
+        p = Path(__file__).resolve().parent / "data"
+    p.mkdir(parents=True, exist_ok=True)
+    _cached_data_dir = p
     return _cached_data_dir
 
 

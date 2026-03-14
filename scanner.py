@@ -353,28 +353,71 @@ async def start_user_scanner(username: str):
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    data_dir = os.environ.get("DATA_DIR", "(not set)")
-    logger.info(f"Drendel Gap Scanner started. DATA_DIR={data_dir}")
+    data_dir_env = os.environ.get("DATA_DIR", "")
+    logger.info(f"Drendel Gap Scanner started. DATA_DIR={data_dir_env or '(not set)'}")
     
-    # Ensure data directory is ready (volume might take a moment to mount)
-    resolved = auth._data_dir()
-    resolved.mkdir(parents=True, exist_ok=True)
-    
-    auth_path = auth._auth_path()
-    logger.info(f"Auth file path: {auth_path}")
-    logger.info(f"Auth file exists: {auth_path.exists()}")
-    
-    # If DATA_DIR is set but auth file doesn't exist, check if volume is mounted
-    if data_dir != "(not set)" and not auth_path.exists():
-        logger.warning(f"Auth file not found at {auth_path}. Volume may still be mounting...")
-        # Wait a few seconds for volume mount
-        for i in range(10):
-            await asyncio.sleep(1)
-            if auth_path.exists():
-                logger.info(f"Auth file appeared after {i+1}s wait.")
+    if data_dir_env:
+        # Wait for the volume to actually mount.
+        # Railway mounts volumes asynchronously — the directory exists as an empty
+        # folder before the mount is ready. We detect the mount by looking for a
+        # marker file we write on first successful access, or by checking if our
+        # users.json already exists from a previous deploy.
+        data_path = Path(data_dir_env)
+        marker = data_path / ".volume_mounted"
+        auth_path = data_path / "users.json"
+        
+        logger.info(f"Waiting for volume mount at {data_path}...")
+        
+        mounted = False
+        for i in range(60):  # Wait up to 60 seconds
+            # Check if volume is mounted by looking for our marker or any user data
+            if marker.exists() or auth_path.exists():
+                mounted = True
+                logger.info(f"Volume detected after {i}s (marker={marker.exists()}, auth={auth_path.exists()})")
                 break
-        else:
-            logger.warning(f"Auth file still not found after 10s. Users will need to re-register.")
+            
+            # Also try writing the marker — if the volume is mounted, this succeeds
+            # and persists. If not mounted yet, it writes to the empty overlay dir
+            # which will be replaced when the mount happens.
+            try:
+                # Check if directory is a mount point (has different device than parent)
+                import os as _os
+                dir_stat = _os.stat(str(data_path))
+                parent_stat = _os.stat(str(data_path.parent))
+                if dir_stat.st_dev != parent_stat.st_dev:
+                    # Different device = volume is mounted
+                    mounted = True
+                    logger.info(f"Volume mount detected via device check after {i}s")
+                    # Write marker for faster detection next time
+                    try:
+                        marker.touch()
+                    except Exception:
+                        pass
+                    break
+            except Exception:
+                pass
+            
+            if i % 5 == 0 and i > 0:
+                logger.info(f"Still waiting for volume mount... ({i}s)")
+            
+            await asyncio.sleep(1)
+        
+        if not mounted:
+            # Last resort: try writing marker anyway and hope for the best
+            try:
+                data_path.mkdir(parents=True, exist_ok=True)
+                marker.touch()
+                logger.warning(f"Volume mount not confirmed after 60s, but directory is writable. Proceeding.")
+            except Exception as e:
+                logger.error(f"Volume mount failed: {e}. Data may not persist!")
+        
+        # Re-read the data dir now that volume should be mounted
+        # Clear the cache so it re-resolves
+        auth._cached_data_dir = None
+        resolved = auth._data_dir()
+        
+        final_auth = auth._auth_path()
+        logger.info(f"Final auth path: {final_auth}, exists: {final_auth.exists()}")
     
     yield
     # Cleanup all user scanners
