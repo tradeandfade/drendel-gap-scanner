@@ -292,7 +292,10 @@ async def start_user_scanner(username: str):
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Drendel Gap Scanner started.")
+    data_dir = os.environ.get("DATA_DIR", "(not set, using current dir)")
+    logger.info(f"Drendel Gap Scanner started. DATA_DIR={data_dir}")
+    logger.info(f"Auth file path: {auth._auth_path()}")
+    logger.info(f"Auth file exists: {auth._auth_path().exists()}")
     yield
     # Cleanup all user scanners
     for username, task in user_tasks.items():

@@ -10,10 +10,17 @@ import os
 import secrets
 from pathlib import Path
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", "."))
-AUTH_PATH = DATA_DIR / "users.json"
 SESSION_COOKIE = "dgs_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+
+
+def _data_dir() -> Path:
+    """Always read DATA_DIR fresh from env at call time, not import time."""
+    return Path(os.environ.get("DATA_DIR", "."))
+
+
+def _auth_path() -> Path:
+    return _data_dir() / "users.json"
 
 
 def _hash_password(password: str, salt: str = None) -> tuple[str, str]:
@@ -24,9 +31,9 @@ def _hash_password(password: str, salt: str = None) -> tuple[str, str]:
 
 
 def _load_users() -> dict:
-    if AUTH_PATH.exists():
+    if _auth_path().exists():
         try:
-            with open(AUTH_PATH, "r") as f:
+            with open(_auth_path(), "r") as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
             pass
@@ -34,8 +41,8 @@ def _load_users() -> dict:
 
 
 def _save_users(data: dict):
-    AUTH_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(AUTH_PATH, "w") as f:
+    _auth_path().parent.mkdir(parents=True, exist_ok=True)
+    with open(_auth_path(), "w") as f:
         json.dump(data, f, indent=2)
 
 
@@ -100,6 +107,6 @@ def logout(token: str):
 
 def get_user_data_dir(username: str) -> Path:
     """Get the data directory for a specific user."""
-    user_dir = DATA_DIR / "userdata" / username.lower()
+    user_dir = _data_dir() / "userdata" / username.lower()
     user_dir.mkdir(parents=True, exist_ok=True)
     return user_dir
