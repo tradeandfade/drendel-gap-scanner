@@ -302,17 +302,24 @@ async function openChart(symbol){
 
 function closeChart(){
   document.getElementById('chart-modal').style.display='none';
+  if(state.chartResizeObserver){state.chartResizeObserver.disconnect();state.chartResizeObserver=null;}
   if(state.chart){state.chart.remove();state.chart=null;}
 }
 
 function renderLightweightChart(container,data,symbol){
+  // Use fixed dimensions to prevent resize loops
+  const w=container.clientWidth;
+  const h=container.clientHeight;
+
   const chart=LightweightCharts.createChart(container,{
-    width:container.clientWidth,height:container.clientHeight,
+    width:w,height:h,
     layout:{background:{color:'#151d2e'},textColor:'#94a3b8'},
     grid:{vertLines:{color:'#1e293b'},horzLines:{color:'#1e293b'}},
     crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
     timeScale:{borderColor:'#1e293b',timeVisible:false},
-    rightPriceScale:{borderColor:'#1e293b'},
+    rightPriceScale:{borderColor:'#1e293b',autoScale:true},
+    handleScale:true,
+    handleScroll:true,
   });
   state.chart=chart;
 
@@ -324,34 +331,39 @@ function renderLightweightChart(container,data,symbol){
   const bars=data.bars.map(b=>({time:b.date,open:b.open,high:b.high,low:b.low,close:b.close}));
   candleSeries.setData(bars);
 
-  // Moving averages
+  // Per-MA type and color settings
   const s=state.settings;
-  const maType=s.chart?.ma_type||'sma';
-  const colors={10:s.chart?.ma10_color||'#f59e0b',20:s.chart?.ma20_color||'#3b82f6',50:s.chart?.ma50_color||'#a855f7',200:s.chart?.ma200_color||'#ef4444'};
+  const maConfig=[
+    {period:10, type:s.chart?.ma10_type||'sma', color:s.chart?.ma10_color||'#f59e0b'},
+    {period:20, type:s.chart?.ma20_type||'sma', color:s.chart?.ma20_color||'#3b82f6'},
+    {period:50, type:s.chart?.ma50_type||'sma', color:s.chart?.ma50_color||'#a855f7'},
+    {period:200, type:s.chart?.ma200_type||'sma', color:s.chart?.ma200_color||'#ef4444'},
+  ];
 
-  for(const period of [10,20,50,200]){
-    const closes=data.bars.map(b=>b.close);
-    const maData=maType==='ema'?calcEMA(closes,period):calcSMA(closes,period);
+  const closes=data.bars.map(b=>b.close);
+  for(const ma of maConfig){
+    const maData=ma.type==='ema'?calcEMA(closes,ma.period):calcSMA(closes,ma.period);
     const lineData=maData.map((v,i)=>v!==null?{time:data.bars[i].date,value:v}:null).filter(Boolean);
     if(lineData.length>0){
-      const line=chart.addLineSeries({color:colors[period],lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+      const line=chart.addLineSeries({color:ma.color,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
       line.setData(lineData);
-    }
-  }
-
-  // Draw gap zones on chart
-  if(data.zones){
-    for(const z of data.zones){
-      const color=z.base_type==='support'?'rgba(16,185,129,0.08)':'rgba(239,68,68,0.08)';
-      // Use markers or price lines for zones - simplified approach
     }
   }
 
   chart.timeScale().fitContent();
 
-  // Handle resize
-  const ro=new ResizeObserver(()=>chart.applyOptions({width:container.clientWidth,height:container.clientHeight}));
+  // Debounced resize handler to prevent infinite loop
+  let resizeTimeout;
+  const ro=new ResizeObserver(()=>{
+    clearTimeout(resizeTimeout);
+    resizeTimeout=setTimeout(()=>{
+      const newW=container.clientWidth;
+      const newH=container.clientHeight;
+      if(newW>0&&newH>0)chart.applyOptions({width:newW,height:newH});
+    },100);
+  });
   ro.observe(container);
+  state.chartResizeObserver=ro;
 }
 
 function calcSMA(data,period){
@@ -428,8 +440,11 @@ function renderSettings(){
   setVal('setting-support-prox',s.alert_sensitivity?.support_proximity_pct);
   setVal('setting-resistance-prox',s.alert_sensitivity?.resistance_proximity_pct);
   setChecked('setting-first-test-only',s.alert_sensitivity?.alert_on_first_test_only);
-  // Chart settings
-  setVal('setting-ma-type',s.chart?.ma_type||'sma');
+  // Chart settings - per MA
+  setVal('setting-ma10-type',s.chart?.ma10_type||'sma');
+  setVal('setting-ma20-type',s.chart?.ma20_type||'sma');
+  setVal('setting-ma50-type',s.chart?.ma50_type||'sma');
+  setVal('setting-ma200-type',s.chart?.ma200_type||'sma');
   if(s.chart?.ma10_color)document.getElementById('setting-ma10-color').value=s.chart.ma10_color;
   if(s.chart?.ma20_color)document.getElementById('setting-ma20-color').value=s.chart.ma20_color;
   if(s.chart?.ma50_color)document.getElementById('setting-ma50-color').value=s.chart.ma50_color;
@@ -563,7 +578,10 @@ async function saveSettings(){
       alert_on_first_test_only:document.getElementById('setting-first-test-only')?.checked||false,
     },
     chart:{
-      ma_type:document.getElementById('setting-ma-type')?.value||'sma',
+      ma10_type:document.getElementById('setting-ma10-type')?.value||'sma',
+      ma20_type:document.getElementById('setting-ma20-type')?.value||'sma',
+      ma50_type:document.getElementById('setting-ma50-type')?.value||'sma',
+      ma200_type:document.getElementById('setting-ma200-type')?.value||'sma',
       ma10_color:document.getElementById('setting-ma10-color')?.value||'#f59e0b',
       ma20_color:document.getElementById('setting-ma20-color')?.value||'#3b82f6',
       ma50_color:document.getElementById('setting-ma50-color')?.value||'#a855f7',

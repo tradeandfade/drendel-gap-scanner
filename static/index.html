@@ -143,29 +143,26 @@
 
         <!-- Chart / MA Settings -->
         <div class="settings-card">
-          <div class="settings-card-title">Chart & Moving Averages</div>
-          <div class="form-group">
-            <label class="form-label">MA Type</label>
-            <select id="setting-ma-type">
-              <option value="sma">Simple Moving Average (SMA)</option>
-              <option value="ema">Exponential Moving Average (EMA)</option>
-            </select>
+          <div class="settings-card-title">Moving Averages</div>
+          <div class="ma-row">
+            <span class="ma-label">10 MA</span>
+            <select id="setting-ma10-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select>
+            <input type="color" id="setting-ma10-color" value="#f59e0b" class="ma-color-input">
           </div>
-          <div class="form-group">
-            <label class="form-label">10 MA Color</label>
-            <input type="color" id="setting-ma10-color" value="#f59e0b" style="width:60px;height:30px;padding:2px;cursor:pointer;">
+          <div class="ma-row">
+            <span class="ma-label">20 MA</span>
+            <select id="setting-ma20-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select>
+            <input type="color" id="setting-ma20-color" value="#3b82f6" class="ma-color-input">
           </div>
-          <div class="form-group">
-            <label class="form-label">20 MA Color</label>
-            <input type="color" id="setting-ma20-color" value="#3b82f6" style="width:60px;height:30px;padding:2px;cursor:pointer;">
+          <div class="ma-row">
+            <span class="ma-label">50 MA</span>
+            <select id="setting-ma50-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select>
+            <input type="color" id="setting-ma50-color" value="#a855f7" class="ma-color-input">
           </div>
-          <div class="form-group">
-            <label class="form-label">50 MA Color</label>
-            <input type="color" id="setting-ma50-color" value="#a855f7" style="width:60px;height:30px;padding:2px;cursor:pointer;">
-          </div>
-          <div class="form-group">
-            <label class="form-label">200 MA Color</label>
-            <input type="color" id="setting-ma200-color" value="#ef4444" style="width:60px;height:30px;padding:2px;cursor:pointer;">
+          <div class="ma-row">
+            <span class="ma-label">200 MA</span>
+            <select id="setting-ma200-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select>
+            <input type="color" id="setting-ma200-color" value="#ef4444" class="ma-color-input">
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
