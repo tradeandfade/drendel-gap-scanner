@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drendel Gap Scanner</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231B2A4A'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%2310b981'>G</text></svg>">
+</head>
+<body>
+
+  <!-- Initialization Overlay -->
+  <div id="init-overlay" class="init-overlay">
+    <div class="init-content">
+      <div class="logo-icon" style="width:56px;height:56px;font-size:24px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--support-accent),var(--accent));color:white;font-weight:700;margin:0 auto 20px;">G</div>
+      <h2 style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">Drendel Gap Scanner</h2>
+      <div id="init-status-text" style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;">Connecting...</div>
+      <div class="init-progress">
+        <div id="init-progress-bar" class="init-progress-bar"></div>
+      </div>
+      <div id="init-detail" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);margin-top:12px;min-height:16px;"></div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">G</div>
+        <div class="logo-text">DRENDEL <span>GAP SCANNER</span></div>
+      </div>
+
+      <div class="header-status">
+        <div class="status-pill">
+          <span id="symbol-count">0</span> symbols
+        </div>
+        <div class="status-pill">
+          <span id="zone-count">0</span> zones
+        </div>
+        <div class="status-pill">
+          <div id="status-dot" class="status-dot"></div>
+          <span id="status-text">Loading...</span>
+        </div>
+        <button class="btn btn-secondary" onclick="forceRefresh()" style="padding:4px 10px;font-size:11px;" title="Force refresh">↻ Refresh</button>
+        <button class="btn btn-secondary" onclick="doLogout()" style="padding:4px 10px;font-size:11px;" title="Log out">Logout</button>
+
+        <nav class="tab-bar">
+          <button class="tab-btn active" data-tab="scanner">Scanner <span class="tab-count">0</span></button>
+          <button class="tab-btn" data-tab="zones">Zone Explorer</button>
+          <button class="tab-btn" data-tab="settings">Settings</button>
+          <button class="tab-btn" data-tab="setup">Setup Guide</button>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main">
+
+    <!-- ============================================================ -->
+    <!-- Scanner Tab -->
+    <!-- ============================================================ -->
+    <div id="tab-scanner" class="tab-content active">
+      <div id="alerts-support" class="alert-section">
+        <div class="loading-overlay">
+          <div class="loading-spinner"></div>
+          <div class="loading-text">Loading alerts...</div>
+        </div>
+      </div>
+      <div id="alerts-resistance" class="alert-section"></div>
+      <div id="alerts-untested" class="alert-section"></div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Zone Explorer Tab -->
+    <!-- ============================================================ -->
+    <div id="tab-zones" class="tab-content">
+      <div id="zone-explorer-content">
+        <div class="loading-overlay">
+          <div class="loading-spinner"></div>
+          <div class="loading-text">Loading zones...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Settings Tab -->
+    <!-- ============================================================ -->
+    <div id="tab-settings" class="tab-content">
+      <div class="settings-grid">
+
+        <!-- Alert Sensitivity -->
+        <div class="settings-card">
+          <div class="settings-card-title">Alert Sensitivity</div>
+          <div class="form-group">
+            <label class="form-label">Support Proximity Threshold (%)</label>
+            <input type="number" id="setting-support-prox" value="0" min="0" max="10" step="0.1">
+            <div class="form-hint">Alert when price is within this % of a support zone. 0 = only when price enters zone.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Resistance Proximity Threshold (%)</label>
+            <input type="number" id="setting-resistance-prox" value="0" min="0" max="10" step="0.1">
+            <div class="form-hint">Alert when price is within this % of a resistance zone. 0 = only when price enters zone.</div>
+          </div>
+          <div class="toggle-row">
+            <span class="toggle-label">Alert on first test only</span>
+            <label class="toggle">
+              <input type="checkbox" id="setting-first-test-only">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Scan Settings -->
+        <div class="settings-card">
+          <div class="settings-card-title">Scan Settings</div>
+          <div class="form-group">
+            <label class="form-label">Refresh Interval</label>
+            <select id="setting-interval">
+              <option value="15">15 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="60">1 minute</option>
+              <option value="300" selected>5 minutes</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Lookback Period (days)</label>
+            <input type="number" id="setting-lookback" value="252" min="30" max="1000">
+            <div class="form-hint">How many trading days of history to scan for gaps. 252 ≈ 1 year.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Max Gaps Per Symbol</label>
+            <input type="number" id="setting-max-gaps" value="50" min="5" max="200">
+          </div>
+        </div>
+
+        <!-- Display Preferences -->
+        <div class="settings-card">
+          <div class="settings-card-title">Display Preferences</div>
+          <div class="toggle-row">
+            <span class="toggle-label">Show untested gaps section</span>
+            <label class="toggle">
+              <input type="checkbox" id="setting-show-untested" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <span class="toggle-label">Show gap age</span>
+            <label class="toggle">
+              <input type="checkbox" id="setting-show-age" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <span class="toggle-label">Compact card view</span>
+            <label class="toggle">
+              <input type="checkbox" id="setting-compact">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+          </div>
+        </div>
+
+        <!-- Watchlist -->
+        <div class="settings-card">
+          <div class="settings-card-title">Watchlist</div>
+          <div class="form-group">
+            <label class="form-label">Enter symbols (one per line, or comma/space separated)</label>
+            <textarea id="watchlist-editor" placeholder="AAPL&#10;MSFT&#10;NVDA&#10;TSLA&#10;AMZN"></textarea>
+            <div class="form-hint">Scanner will reinitialize when you save. This may take a moment for large watchlists.</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="saveWatchlist()">Save Watchlist & Reinitialize</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Setup Guide Tab -->
+    <!-- ============================================================ -->
+    <div id="tab-setup" class="tab-content">
+      <div class="setup-container">
+
+        <div class="setup-step">
+          <span class="step-number">1</span>
+          <h3 class="step-title">Create a Free Alpaca Account</h3>
+          <div class="step-body">
+            Go to <a href="https://alpaca.markets" target="_blank">alpaca.markets</a> and sign up for a free account.
+            You can use a Paper Trading account (no real money needed). Paper accounts give you the same market data access as live accounts.
+          </div>
+        </div>
+
+        <div class="setup-step">
+          <span class="step-number">2</span>
+          <h3 class="step-title">Generate API Keys</h3>
+          <div class="step-body">
+            Once logged in to Alpaca, go to your Paper Trading dashboard. Click <strong>"Generate API Keys"</strong> (or "Regenerate" if you've done this before).
+            You'll see two values: <code>API Key ID</code> and <code>Secret Key</code>. Copy both — you'll paste them below.
+            <br><br>
+            <strong>Important:</strong> The Secret Key is only shown once. Save it somewhere safe.
+          </div>
+        </div>
+
+        <div class="setup-step">
+          <span class="step-number">3</span>
+          <h3 class="step-title">Enter Your Keys Below</h3>
+          <div class="step-body">
+            Paste your Alpaca API keys here. They are stored locally on this server only — never sent anywhere else.
+          </div>
+
+          <div class="setup-keys-form">
+            <div class="form-group">
+              <label class="form-label">API Key ID</label>
+              <input type="text" id="setup-api-key" placeholder="PK...">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Secret Key</label>
+              <input type="password" id="setup-secret-key" placeholder="Paste your secret key">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Base URL</label>
+              <select id="setup-base-url">
+                <option value="https://paper-api.alpaca.markets">Paper Trading (recommended)</option>
+                <option value="https://api.alpaca.markets">Live Trading</option>
+              </select>
+            </div>
+            <div class="btn-row">
+              <button id="setup-submit-btn" class="btn btn-primary" onclick="submitSetup()">Validate & Save</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="setup-step">
+          <span class="step-number">4</span>
+          <h3 class="step-title">Add Your Watchlist</h3>
+          <div class="step-body">
+            After your keys are validated, go to the <strong>Settings</strong> tab and add your stock symbols to the watchlist.
+            Enter them one per line or comma-separated (e.g., <code>AAPL, MSFT, NVDA, TSLA</code>).
+            The scanner will start loading historical data and scanning for gap zones.
+          </div>
+        </div>
+
+        <div class="setup-step">
+          <span class="step-number">5</span>
+          <h3 class="step-title">Adjust Your Settings</h3>
+          <div class="step-body">
+            In the <strong>Settings</strong> tab, configure:
+            <br><br>
+            <strong>Alert Sensitivity:</strong> Set to 0% to only alert when price is actually in a gap zone, or increase to get early proximity warnings.
+            <br><br>
+            <strong>Refresh Interval:</strong> How often the scanner checks prices (default: 5 minutes).
+            <br><br>
+            <strong>Lookback Period:</strong> How far back to scan for gaps (default: 252 days = 1 trading year).
+          </div>
+        </div>
+
+        <div class="setup-step">
+          <span class="step-number">6</span>
+          <h3 class="step-title">Understanding the Scanner</h3>
+          <div class="step-body">
+            The Scanner tab shows three sections:
+            <br><br>
+            <strong style="color: var(--support-text);">Support Gap Alerts (Green):</strong> Stocks where price is pulling back into a gap-up zone.
+            These zones act as potential support — price may bounce from here.
+            <br><br>
+            <strong style="color: var(--resistance-text);">Resistance Gap Alerts (Red):</strong> Stocks where price is pushing up into a gap-down zone.
+            These zones act as potential resistance — price may reverse here.
+            <br><br>
+            <strong style="color: var(--untested-text);">Untested Gap Alerts (Blue):</strong> Newly formed gaps that haven't been tested yet.
+            On first contact, they convert to either support or resistance.
+            <br><br>
+            Each alert card shows the zone boundaries, how deep price is into the zone, and whether this is the zone's first test.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

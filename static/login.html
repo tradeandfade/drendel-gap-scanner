@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drendel Gap Scanner — Login</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231B2A4A'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%2310b981'>G</text></svg>">
+  <style>
+    body { display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px; }
+    .login-container { width:100%;max-width:400px;position:relative;z-index:1; }
+    .login-logo { text-align:center;margin-bottom:32px; }
+    .login-logo h1 { font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--text-primary);letter-spacing:-0.5px; }
+    .login-logo h1 span { color:var(--text-muted);font-weight:400; }
+    .login-card { background:var(--bg-card);border:1px solid var(--border-primary);border-radius:var(--radius-lg);padding:28px; }
+    .login-card h2 { font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:6px; }
+    .login-card .subtitle { font-size:12.5px;color:var(--text-muted);margin-bottom:22px;line-height:1.5; }
+    .login-card .btn-primary { width:100%;padding:10px;font-size:14px;margin-top:6px; }
+    .login-error { font-size:12px;color:var(--error);margin-top:10px;text-align:center;min-height:18px; }
+    .login-toggle { text-align:center;margin-top:18px;font-size:12.5px;color:var(--text-muted); }
+    .login-toggle a { color:var(--accent);text-decoration:none;cursor:pointer; }
+    .login-toggle a:hover { text-decoration:underline; }
+    .deploy-note { text-align:center;margin-top:24px;font-size:11px;color:var(--text-dim);line-height:1.6; }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-logo">
+      <div class="logo-icon" style="width:48px;height:48px;font-size:22px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--support-accent),var(--accent));color:white;font-weight:700;margin:0 auto 14px;">G</div>
+      <h1>DRENDEL <span>GAP SCANNER</span></h1>
+    </div>
+
+    <!-- Login Form (shown by default) -->
+    <div id="login-form" class="login-card">
+      <h2>Welcome Back</h2>
+      <p class="subtitle">Log in to access your scanner dashboard.</p>
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input type="text" id="login-username" placeholder="Username" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" onclick="doLogin()">Log In</button>
+      <div id="login-error" class="login-error"></div>
+      <div class="login-toggle">New here? <a onclick="showRegister()">Create an account</a></div>
+    </div>
+
+    <!-- Register Form (hidden by default) -->
+    <div id="register-form" class="login-card" style="display:none;">
+      <h2>Create Your Account</h2>
+      <p class="subtitle">Create a username and password. Your API keys and watchlist will be stored privately under your account.</p>
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input type="text" id="reg-username" placeholder="Choose a username (min 3 chars)" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" id="reg-password" placeholder="Choose a password (min 6 chars)" autocomplete="new-password">
+      </div>
+      <button class="btn btn-primary" onclick="doRegister()">Create Account & Start</button>
+      <div id="reg-error" class="login-error"></div>
+      <div class="login-toggle">Already have an account? <a onclick="showLogin()">Log in</a></div>
+    </div>
+
+    <div class="deploy-note">
+      Each account has its own private API keys, watchlist, and settings.<br>
+      No one can see your data.
+    </div>
+  </div>
+
+  <script>
+    function showLogin() {
+      document.getElementById('login-form').style.display = 'block';
+      document.getElementById('register-form').style.display = 'none';
+    }
+    function showRegister() {
+      document.getElementById('register-form').style.display = 'block';
+      document.getElementById('login-form').style.display = 'none';
+    }
+
+    async function doRegister() {
+      const username = document.getElementById('reg-username').value.trim();
+      const password = document.getElementById('reg-password').value;
+      const errorEl = document.getElementById('reg-error');
+      errorEl.textContent = '';
+      if (!username || !password) { errorEl.textContent = 'Username and password are required.'; return; }
+      try {
+        const resp = await fetch('/api/auth/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await resp.json();
+        if (data.ok) { await new Promise(r => setTimeout(r, 300)); window.location.href = '/'; }
+        else { errorEl.textContent = data.message || 'Registration failed.'; }
+      } catch (e) { errorEl.textContent = 'Connection error.'; }
+    }
+
+    async function doLogin() {
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      const errorEl = document.getElementById('login-error');
+      errorEl.textContent = '';
+      if (!username || !password) { errorEl.textContent = 'Username and password are required.'; return; }
+      try {
+        const resp = await fetch('/api/auth/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await resp.json();
+        if (data.ok) { await new Promise(r => setTimeout(r, 300)); window.location.href = '/'; }
+        else { errorEl.textContent = data.message || 'Login failed.'; }
+      } catch (e) { errorEl.textContent = 'Connection error.'; }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        if (document.getElementById('register-form').style.display !== 'none') doRegister();
+        else doLogin();
+      }
+    });
+
+    // Check if already logged in
+    (async () => {
+      try {
+        const resp = await fetch('/api/auth/status');
+        const data = await resp.json();
+        if (data.authenticated) window.location.href = '/';
+      } catch (e) {}
+    })();
+  </script>
+</body>
+</html>
