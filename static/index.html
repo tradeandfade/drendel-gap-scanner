@@ -5,22 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Drendel Gap Scanner</title>
   <link rel="stylesheet" href="/static/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231B2A4A'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%2310b981'>G</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23080808'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%237c9a5e'>G</text></svg>">
 </head>
 <body>
-
-  <!-- Init Overlay -->
   <div id="init-overlay" class="init-overlay">
     <div class="init-content">
-      <div class="logo-icon" style="width:56px;height:56px;font-size:24px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--bg-primary);font-weight:700;margin:0 auto 20px;">G</div>
-      <h2 style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">Drendel Gap Scanner</h2>
-      <div id="init-status-text" style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;">Connecting...</div>
+      <div style="width:48px;height:48px;font-size:20px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--olive);color:#000;font-weight:700;margin:0 auto 16px;">G</div>
+      <div style="font-size:14px;font-weight:500;color:var(--text-1);margin-bottom:4px;">Drendel Gap Scanner</div>
+      <div id="init-status-text" style="font-size:11px;color:var(--text-3);margin-bottom:20px;">Connecting...</div>
       <div class="init-progress"><div id="init-progress-bar" class="init-progress-bar"></div></div>
-      <div id="init-detail" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);margin-top:12px;min-height:16px;"></div>
+      <div id="init-detail" style="font-family:'DM Mono';font-size:10px;color:var(--text-4);margin-top:10px;min-height:14px;"></div>
     </div>
   </div>
-
-  <!-- Toast -->
   <div id="toast-container" class="toast-container"></div>
 
   <!-- Chart Modal -->
@@ -28,246 +24,108 @@
     <div class="chart-modal-backdrop" onclick="closeChart()"></div>
     <div class="chart-modal-content">
       <div class="chart-header">
-        <span id="chart-symbol" class="chart-symbol">AAPL</span>
+        <span id="chart-symbol" class="chart-symbol"></span>
         <button class="chart-close" onclick="closeChart()">✕</button>
       </div>
       <div id="chart-container" class="chart-container"></div>
     </div>
   </div>
 
-  <!-- Header -->
   <header class="header">
     <div class="header-inner">
-      <div class="logo">
-        <div class="logo-icon">G</div>
-        <div class="logo-text">DRENDEL <span>GAP SCANNER</span></div>
-      </div>
+      <div class="logo"><div class="logo-icon">G</div><div class="logo-text">DRENDEL <span>GAP SCANNER</span></div></div>
       <div class="header-status">
-        <div class="status-pill"><span id="symbol-count">0</span> symbols</div>
+        <div class="status-pill"><span id="symbol-count">0</span> sym</div>
         <div class="status-pill"><span id="zone-count">0</span> zones</div>
-        <div class="status-pill">
-          <div id="status-dot" class="status-dot"></div>
-          <span id="status-text">Loading...</span>
-        </div>
-        <button class="btn btn-secondary" onclick="forceRefresh()" style="padding:4px 10px;font-size:11px;">↻</button>
-        <button class="btn btn-secondary" onclick="doLogout()" style="padding:4px 10px;font-size:11px;">Logout</button>
+        <div class="status-pill"><div id="status-dot" class="status-dot"></div><span id="status-text">—</span></div>
+        <button class="btn btn-secondary" onclick="forceRefresh()" style="padding:3px 8px;font-size:10px;">↻</button>
+        <button class="btn btn-secondary" onclick="doLogout()" style="padding:3px 8px;font-size:10px;">Logout</button>
         <nav class="tab-bar">
           <button class="tab-btn active" data-tab="scanner">Scanner <span class="tab-count">0</span></button>
-          <button class="tab-btn" data-tab="zones">Zone Explorer</button>
+          <button class="tab-btn" data-tab="zones">Zones</button>
           <button class="tab-btn" data-tab="settings">Settings</button>
-          <button class="tab-btn" data-tab="setup">Setup Guide</button>
+          <button class="tab-btn" data-tab="setup">Setup</button>
         </nav>
       </div>
     </div>
   </header>
 
-  <!-- Main -->
   <main class="main">
-
-    <!-- Scanner Tab -->
     <div id="tab-scanner" class="tab-content active">
       <div class="scanner-layout">
-        <!-- Alert Feed Sidebar -->
         <div class="alert-sidebar">
-          <div class="sidebar-header">
-            <span class="sidebar-title">Alert Feed</span>
-            <span id="feed-count" class="sidebar-count">0</span>
-          </div>
-          <div id="alert-feed" class="alert-feed">
-            <div class="empty-state"><div class="empty-state-text">No alerts yet today.<br>Alerts appear here as they fire.</div></div>
-          </div>
+          <div class="sidebar-header"><span class="sidebar-title">Alert Feed</span><span id="feed-count" class="sidebar-count">0</span></div>
+          <div id="alert-feed" class="alert-feed"><div class="empty-state"><div class="empty-state-text">No alerts yet today.</div></div></div>
         </div>
-
-        <!-- Main Scanner Area -->
         <div class="scanner-main">
-          <div class="scanner-toolbar">
-            <button class="btn btn-ghost" onclick="confirmClearAlerts()" title="Clear all alerts">Clear Alerts</button>
-          </div>
+          <div class="scanner-toolbar"><button class="btn btn-ghost" onclick="confirmClearAlerts()">Clear Alerts</button></div>
           <div id="alerts-support" class="alert-section"></div>
           <div id="alerts-resistance" class="alert-section"></div>
           <div id="alerts-untested" class="alert-section"></div>
         </div>
       </div>
-      <!-- Undo bar (shown after clearing) -->
       <div id="undo-bar" class="undo-bar" style="display:none;">
         <span>Alerts cleared.</span>
-        <button class="btn btn-secondary" onclick="undoClearAlerts()" style="padding:4px 12px;font-size:11px;">Undo</button>
-        <button class="btn btn-ghost" onclick="dismissUndo()" style="font-size:14px;">✕</button>
+        <button class="btn btn-secondary" onclick="undoClearAlerts()" style="padding:3px 10px;font-size:10px;">Undo</button>
+        <button class="btn btn-ghost" onclick="dismissUndo()" style="font-size:12px;">✕</button>
       </div>
     </div>
 
-    <!-- Zone Explorer Tab -->
     <div id="tab-zones" class="tab-content">
-      <div id="zone-explorer-content">
-        <div class="loading-overlay"><div class="loading-spinner"></div><div class="loading-text">Loading zones...</div></div>
-      </div>
+      <div id="zone-explorer-content"><div class="loading-overlay"><div class="loading-spinner"></div><div class="loading-text">Loading zones...</div></div></div>
     </div>
 
-    <!-- Settings Tab -->
     <div id="tab-settings" class="tab-content">
       <div class="settings-grid">
-        <!-- Alert Sensitivity -->
         <div class="settings-card">
           <div class="settings-card-title">Alert Sensitivity</div>
-          <div class="form-group">
-            <label class="form-label">Support Proximity Threshold (%)</label>
-            <input type="number" id="setting-support-prox" value="0" min="0" max="10" step="0.1">
-            <div class="form-hint">0 = only when price enters zone.</div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Resistance Proximity Threshold (%)</label>
-            <input type="number" id="setting-resistance-prox" value="0" min="0" max="10" step="0.1">
-          </div>
-          <div class="toggle-row">
-            <span class="toggle-label">Alert on first test only</span>
-            <label class="toggle"><input type="checkbox" id="setting-first-test-only"><span class="toggle-slider"></span></label>
-          </div>
+          <div class="form-group"><label class="form-label">Support Proximity (%)</label><input type="number" id="setting-support-prox" value="0" min="0" max="10" step="0.1"><div class="form-hint">0 = only when price enters zone.</div></div>
+          <div class="form-group"><label class="form-label">Resistance Proximity (%)</label><input type="number" id="setting-resistance-prox" value="0" min="0" max="10" step="0.1"></div>
+          <div class="toggle-row"><span class="toggle-label">First test only</span><label class="toggle"><input type="checkbox" id="setting-first-test-only"><span class="toggle-slider"></span></label></div>
         </div>
-
-        <!-- Scan Settings -->
         <div class="settings-card">
           <div class="settings-card-title">Scan Settings</div>
-          <div class="form-group">
-            <label class="form-label">Refresh Interval</label>
-            <select id="setting-interval">
-              <option value="15">15 seconds</option>
-              <option value="30">30 seconds</option>
-              <option value="60">1 minute</option>
-              <option value="300" selected>5 minutes</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Lookback Period (days)</label>
-            <input type="number" id="setting-lookback" value="252" min="30" max="1000">
-            <div class="form-hint">252 ≈ 1 trading year.</div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Max Gaps Per Symbol</label>
-            <input type="number" id="setting-max-gaps" value="50" min="5" max="200">
-          </div>
-          <div class="btn-row">
-            <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
-          </div>
+          <div class="form-group"><label class="form-label">Refresh Interval</label><select id="setting-interval"><option value="15">15s</option><option value="30">30s</option><option value="60">1 min</option><option value="300" selected>5 min</option></select></div>
+          <div class="form-group"><label class="form-label">Lookback (days)</label><input type="number" id="setting-lookback" value="252" min="30" max="1000"><div class="form-hint">252 ≈ 1 trading year</div></div>
+          <div class="form-group"><label class="form-label">Max Gaps / Symbol</label><input type="number" id="setting-max-gaps" value="50" min="5" max="200"></div>
+          <div class="btn-row"><button class="btn btn-primary" onclick="saveSettings()">Save</button></div>
         </div>
-
-        <!-- Chart / MA Settings -->
         <div class="settings-card">
           <div class="settings-card-title">Moving Averages</div>
-          <div class="ma-row">
-            <span class="ma-label">10 MA</span>
-            <select id="setting-ma10-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select>
-            <input type="color" id="setting-ma10-color" value="#f59e0b" class="ma-color-input">
-          </div>
-          <div class="ma-row">
-            <span class="ma-label">20 MA</span>
-            <select id="setting-ma20-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select>
-            <input type="color" id="setting-ma20-color" value="#3b82f6" class="ma-color-input">
-          </div>
-          <div class="ma-row">
-            <span class="ma-label">50 MA</span>
-            <select id="setting-ma50-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select>
-            <input type="color" id="setting-ma50-color" value="#a855f7" class="ma-color-input">
-          </div>
-          <div class="ma-row">
-            <span class="ma-label">200 MA</span>
-            <select id="setting-ma200-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select>
-            <input type="color" id="setting-ma200-color" value="#ef4444" class="ma-color-input">
-          </div>
-          <div class="btn-row">
-            <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
-          </div>
+          <div class="ma-row"><span class="ma-label">10</span><select id="setting-ma10-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma10-color" value="#f59e0b" class="ma-color-input"></div>
+          <div class="ma-row"><span class="ma-label">20</span><select id="setting-ma20-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma20-color" value="#3b82f6" class="ma-color-input"></div>
+          <div class="ma-row"><span class="ma-label">50</span><select id="setting-ma50-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma50-color" value="#a855f7" class="ma-color-input"></div>
+          <div class="ma-row"><span class="ma-label">200</span><select id="setting-ma200-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma200-color" value="#ef4444" class="ma-color-input"></div>
+          <div class="btn-row"><button class="btn btn-primary" onclick="saveSettings()">Save</button></div>
         </div>
-
-        <!-- Watchlist -->
         <div class="settings-card" style="grid-column:1/-1;">
           <div class="settings-card-title">Watchlist</div>
-
-          <!-- Add symbols -->
-          <div style="display:flex;gap:8px;margin-bottom:12px;">
-            <input type="text" id="watchlist-add-input" placeholder="Add symbol (e.g. AAPL)" style="flex:1;" onkeydown="if(event.key==='Enter')addSymbol()">
-            <button class="btn btn-primary" onclick="addSymbol()" style="white-space:nowrap;">+ Add</button>
-          </div>
-
-          <!-- Bulk paste toggle -->
-          <div style="margin-bottom:12px;">
-            <a onclick="toggleBulkPaste()" style="font-size:12px;color:var(--accent);cursor:pointer;user-select:none;" id="bulk-paste-toggle">Bulk paste multiple symbols</a>
-            <div id="bulk-paste-area" style="display:none;margin-top:8px;">
-              <textarea id="watchlist-bulk" placeholder="Paste symbols separated by commas, spaces, or new lines&#10;e.g. AAPL, MSFT, NVDA, TSLA" style="min-height:80px;"></textarea>
-              <div class="btn-row" style="margin-top:8px;">
-                <button class="btn btn-secondary" onclick="addBulkSymbols()">Add All From Paste</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Search/filter -->
-          <div style="margin-bottom:10px;">
-            <input type="text" id="watchlist-search" placeholder="Search watchlist..." oninput="renderWatchlistManager()" style="font-size:12px;">
-          </div>
-
-          <!-- Symbol count -->
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
-            <span id="watchlist-count">0</span> symbols
-          </div>
-
-          <!-- Symbol list -->
+          <div style="display:flex;gap:6px;margin-bottom:10px;"><input type="text" id="watchlist-add-input" placeholder="Add symbol (e.g. AAPL)" style="flex:1;" onkeydown="if(event.key==='Enter')addSymbol()"><button class="btn btn-primary" onclick="addSymbol()">+ Add</button></div>
+          <div style="margin-bottom:10px;"><a onclick="toggleBulkPaste()" style="font-size:11px;color:var(--olive-bright);cursor:pointer;" id="bulk-paste-toggle">Bulk paste</a><div id="bulk-paste-area" style="display:none;margin-top:6px;"><textarea id="watchlist-bulk" placeholder="Paste comma/space/newline separated symbols" style="min-height:60px;"></textarea><div class="btn-row" style="margin-top:6px;"><button class="btn btn-secondary" onclick="addBulkSymbols()">Add All</button></div></div></div>
+          <div style="margin-bottom:8px;"><input type="text" id="watchlist-search" placeholder="Search..." oninput="renderWatchlistManager()" style="font-size:11px;"></div>
+          <div style="font-size:10px;color:var(--text-4);margin-bottom:6px;"><span id="watchlist-count">0</span> symbols</div>
           <div id="watchlist-symbols" class="watchlist-symbols"></div>
-
-          <!-- Save -->
-          <div class="btn-row" style="margin-top:14px;">
-            <button class="btn btn-primary" onclick="saveWatchlist()">Save Watchlist & Reinitialize</button>
-            <button class="btn btn-secondary" onclick="clearWatchlist()">Clear All</button>
-          </div>
+          <div class="btn-row"><button class="btn btn-primary" onclick="saveWatchlist()">Save & Reinitialize</button><button class="btn btn-secondary" onclick="clearWatchlist()">Clear All</button></div>
         </div>
       </div>
     </div>
 
-    <!-- Setup Guide Tab -->
     <div id="tab-setup" class="tab-content">
       <div class="setup-container">
-        <div class="setup-step">
-          <span class="step-number">1</span>
-          <h3 class="step-title">Create a Free Alpaca Account</h3>
-          <div class="step-body">Go to <a href="https://alpaca.markets" target="_blank">alpaca.markets</a> and sign up. Paper Trading accounts are free and give full market data access.</div>
-        </div>
-        <div class="setup-step">
-          <span class="step-number">2</span>
-          <h3 class="step-title">Generate API Keys</h3>
-          <div class="step-body">In your Alpaca dashboard, click <strong>"Generate API Keys"</strong>. Copy both the <code>API Key ID</code> and <code>Secret Key</code>. The Secret Key is only shown once.</div>
-        </div>
-        <div class="setup-step">
-          <span class="step-number">3</span>
-          <h3 class="step-title">Enter Your Keys</h3>
-          <div class="step-body">Paste your keys below. They are stored privately under your account only.</div>
+        <div class="setup-step"><span class="step-number">1</span><h3 class="step-title">Create Alpaca Account</h3><div class="step-body">Go to <a href="https://alpaca.markets" target="_blank">alpaca.markets</a> — free paper trading account gives full data access.</div></div>
+        <div class="setup-step"><span class="step-number">2</span><h3 class="step-title">Generate API Keys</h3><div class="step-body">In your Alpaca dashboard, click <strong>Generate API Keys</strong>. Copy both the <code>API Key ID</code> and <code>Secret Key</code>.</div></div>
+        <div class="setup-step"><span class="step-number">3</span><h3 class="step-title">Enter Keys</h3><div class="step-body">Paste your keys below — stored privately under your account only.</div>
           <div class="setup-keys-form">
-            <div class="form-group">
-              <label class="form-label">API Key ID</label>
-              <input type="text" id="setup-api-key" placeholder="PK...">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Secret Key</label>
-              <input type="password" id="setup-secret-key" placeholder="Paste your secret key">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Base URL</label>
-              <select id="setup-base-url">
-                <option value="https://paper-api.alpaca.markets">Paper Trading (recommended)</option>
-                <option value="https://api.alpaca.markets">Live Trading</option>
-              </select>
-            </div>
-            <div class="btn-row">
-              <button id="setup-submit-btn" class="btn btn-primary" onclick="submitSetup()">Validate & Save</button>
-            </div>
+            <div class="form-group"><label class="form-label">API Key ID</label><input type="text" id="setup-api-key" placeholder="PK..."></div>
+            <div class="form-group"><label class="form-label">Secret Key</label><input type="password" id="setup-secret-key" placeholder="Secret key"></div>
+            <div class="form-group"><label class="form-label">Base URL</label><select id="setup-base-url"><option value="https://paper-api.alpaca.markets">Paper Trading</option><option value="https://api.alpaca.markets">Live</option></select></div>
+            <div class="btn-row"><button id="setup-submit-btn" class="btn btn-primary" onclick="submitSetup()">Validate & Save</button></div>
           </div>
         </div>
-        <div class="setup-step">
-          <span class="step-number">4</span>
-          <h3 class="step-title">Add Your Watchlist</h3>
-          <div class="step-body">Go to <strong>Settings</strong> and add your stock symbols. The scanner will start loading data immediately.</div>
-        </div>
+        <div class="setup-step"><span class="step-number">4</span><h3 class="step-title">Add Watchlist</h3><div class="step-body">Go to <strong>Settings</strong> and add your symbols.</div></div>
       </div>
     </div>
   </main>
-
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
   <script src="/static/app.js"></script>
 </body>
