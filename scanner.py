@@ -212,11 +212,22 @@ async def user_scan_loop(username: str):
         await asyncio.sleep(2)
 
     logger.info(f"[{username}] Scan loop started.")
+    last_reset_date = None
 
     while True:
         user_dir = auth.get_user_data_dir(username)
         cfg = config.load_config(user_dir)
         interval = cfg.get("scan_interval_seconds", 300)
+
+        et_now = now_et()
+        today = et_now.date()
+
+        # Daily reset: clear alerts before market open (9:30 AM ET)
+        if last_reset_date != today and et_now.hour < 10 and et_now.weekday() < 5:
+            state["alerts"] = {"support": [], "resistance": [], "untested": []}
+            state["status"].alert_count = 0
+            last_reset_date = today
+            logger.info(f"[{username}] Daily reset: alerts cleared for new trading day.")
 
         if state["fetcher"] and state["zones"]:
             await run_user_scan_cycle(username)
@@ -501,6 +512,31 @@ async def trigger_reinitialize(request: Request):
     username = get_current_user(request)
     await reinitialize_user(username)
     return JSONResponse({"ok": True, "message": "Scanner reinitialized."})
+
+
+@app.get("/api/chart/{symbol}")
+async def get_chart_data(symbol: str, request: Request):
+    """Return daily bars and gap zones for charting."""
+    username = get_current_user(request)
+    state = get_user_state(username)
+    user_dir = auth.get_user_data_dir(username)
+    cfg = config.load_config(user_dir)
+    fetcher = state.get("fetcher")
+
+    symbol = symbol.upper()
+
+    if not fetcher:
+        raise HTTPException(status_code=400, detail="Scanner not initialized")
+
+    # Fetch daily bars (use more data for chart scrolling)
+    bars = await fetcher.fetch_daily_bars(symbol, cfg.get("lookback_days", 252))
+    bar_data = [{"date": b.bar_date.isoformat(), "open": b.open, "high": b.high, "low": b.low, "close": b.close} for b in bars]
+
+    # Get zones for this symbol
+    zones = state["zones"].get(symbol, [])
+    zone_data = [z.to_dict() for z in zones]
+
+    return JSONResponse({"bars": bar_data, "zones": zone_data})
 
 
 # ---------------------------------------------------------------------------
