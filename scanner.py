@@ -121,6 +121,13 @@ async def initialize_user_scanner(username: str):
     state["status"].error = None
     logger.info(f"[{username}] Scanner initialized: {len(watchlist)} symbols, {total_zones} active zones")
 
+    # Load persisted alerts from disk (survive restarts)
+    saved_alerts = _load_alerts(user_dir)
+    if any(saved_alerts.get(k) for k in ['support', 'resistance', 'untested']):
+        state["alerts"] = saved_alerts
+        state["status"].alert_count = sum(len(v) for v in saved_alerts.values())
+        logger.info(f"[{username}] Loaded {state['status'].alert_count} persisted alerts from disk")
+
     try:
         prices = await fetcher.fetch_latest_prices(watchlist)
         state["latest_prices"] = prices
@@ -173,9 +180,61 @@ async def run_user_scan_cycle(username: str):
         state["status"].last_scan = now_et().strftime("%Y-%m-%d %H:%M:%S ET")
         state["status"].alert_count = sum(len(v) for v in all_alerts.values())
         state["status"].zone_count = sum(len(z) for z in state["zones"].values())
+
+        # Persist alerts to disk so they survive restarts
+        _save_alerts(user_dir, all_alerts)
+
     except Exception as e:
         logger.error(f"[{username}] Scan cycle error: {e}")
         state["status"].error = str(e)
+
+
+def _save_alerts(user_dir: Path, alerts: dict):
+    """Save alerts to disk."""
+    import json
+    path = user_dir / "alerts.json"
+    try:
+        with open(path, "w") as f:
+            json.dump(alerts, f)
+    except Exception:
+        pass
+
+
+def _load_alerts(user_dir: Path) -> dict:
+    """Load alerts from disk."""
+    import json
+    path = user_dir / "alerts.json"
+    if path.exists():
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"support": [], "resistance": [], "untested": []}
+
+
+def _save_alert_backup(user_dir: Path, alerts: dict):
+    """Save a backup before clearing (for undo)."""
+    import json
+    path = user_dir / "alerts_backup.json"
+    try:
+        with open(path, "w") as f:
+            json.dump(alerts, f)
+    except Exception:
+        pass
+
+
+def _load_alert_backup(user_dir: Path) -> dict | None:
+    """Load the backup alerts (for undo)."""
+    import json
+    path = user_dir / "alerts_backup.json"
+    if path.exists():
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return None
 
 
 async def run_user_eod_update(username: str):
@@ -224,8 +283,10 @@ async def user_scan_loop(username: str):
 
         # Daily reset: clear alerts before market open (9:30 AM ET)
         if last_reset_date != today and et_now.hour < 10 and et_now.weekday() < 5:
+            _save_alert_backup(user_dir, state["alerts"])
             state["alerts"] = {"support": [], "resistance": [], "untested": []}
             state["status"].alert_count = 0
+            _save_alerts(user_dir, state["alerts"])
             last_reset_date = today
             logger.info(f"[{username}] Daily reset: alerts cleared for new trading day.")
 
@@ -425,6 +486,33 @@ async def get_alerts(request: Request):
     username = get_current_user(request)
     state = get_user_state(username)
     return JSONResponse(state["alerts"])
+
+
+@app.post("/api/alerts/clear")
+async def clear_alerts(request: Request):
+    username = get_current_user(request)
+    user_dir = auth.get_user_data_dir(username)
+    state = get_user_state(username)
+    # Save backup before clearing
+    _save_alert_backup(user_dir, state["alerts"])
+    state["alerts"] = {"support": [], "resistance": [], "untested": []}
+    state["status"].alert_count = 0
+    _save_alerts(user_dir, state["alerts"])
+    return JSONResponse({"ok": True, "message": "Alerts cleared.", "can_undo": True})
+
+
+@app.post("/api/alerts/restore")
+async def restore_alerts(request: Request):
+    username = get_current_user(request)
+    user_dir = auth.get_user_data_dir(username)
+    state = get_user_state(username)
+    backup = _load_alert_backup(user_dir)
+    if backup:
+        state["alerts"] = backup
+        state["status"].alert_count = sum(len(v) for v in backup.values())
+        _save_alerts(user_dir, backup)
+        return JSONResponse({"ok": True, "message": "Alerts restored."})
+    return JSONResponse({"ok": False, "message": "No backup available."}, status_code=404)
 
 
 @app.get("/api/zones")

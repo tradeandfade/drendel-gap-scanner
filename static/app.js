@@ -30,10 +30,10 @@ async function doLogout(){
   _isLoggingOut=true; stopAutoRefresh();
   const overlay=document.createElement('div');
   overlay.innerHTML=`<div style="text-align:center;max-width:360px;padding:20px;">
-    <div style="width:48px;height:48px;font-size:22px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--support-accent),var(--accent));color:white;font-weight:700;margin:0 auto 20px;">G</div>
+    <div style="width:48px;height:48px;font-size:22px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--bg-primary);font-weight:700;margin:0 auto 20px;">G</div>
     <div style="font-size:15px;font-weight:500;color:var(--text-primary);margin-bottom:20px;">Logging out...</div>
-    <div style="width:240px;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin:0 auto;">
-      <div id="logout-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--support-accent),var(--accent));border-radius:2px;transition:width 1.1s cubic-bezier(0.4,0,0.2,1);"></div>
+    <div style="width:220px;height:2px;background:var(--border-primary);border-radius:1px;overflow:hidden;margin:0 auto;">
+      <div id="logout-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--sage));border-radius:1px;transition:width 1.1s cubic-bezier(0.4,0,0.2,1);"></div>
     </div></div>`;
   overlay.style.cssText='position:fixed;inset:0;z-index:600;background:var(--bg-primary);display:flex;align-items:center;justify-content:center;';
   document.body.appendChild(overlay);
@@ -624,4 +624,66 @@ function showToast(msg,type='info'){
 async function forceRefresh(){
   showToast('Refreshing...','info');await loadAlerts();await loadStatus();
   if(state.activeTab==='zones')await loadZones();
+}
+
+/* ==========================================================================
+   Clear / Undo Alerts
+   ========================================================================== */
+function confirmClearAlerts(){
+  const total=(state.alerts.support?.length||0)+(state.alerts.resistance?.length||0)+(state.alerts.untested?.length||0);
+  if(!total){showToast('No alerts to clear.','info');return;}
+
+  const overlay=document.createElement('div');
+  overlay.className='confirm-overlay';
+  overlay.id='confirm-clear-overlay';
+  overlay.innerHTML=`
+    <div class="confirm-box">
+      <h3>Clear All Alerts?</h3>
+      <p>This will remove all ${total} alerts from the scanner. You can undo this immediately after.</p>
+      <div class="confirm-actions">
+        <button class="btn btn-secondary" onclick="dismissConfirm()">Cancel</button>
+        <button class="btn btn-danger" onclick="doClearAlerts()">Clear Alerts</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function dismissConfirm(){
+  const el=document.getElementById('confirm-clear-overlay');
+  if(el)el.remove();
+}
+
+async function doClearAlerts(){
+  dismissConfirm();
+  try{
+    const resp=await fetch('/api/alerts/clear',{method:'POST'});
+    const data=await resp.json();
+    if(data.ok){
+      state.alerts={support:[],resistance:[],untested:[]};
+      state.alertFeed=[];
+      renderAlerts();renderAlertFeed();updateAlertCounts();
+      // Show undo bar
+      const undo=document.getElementById('undo-bar');
+      if(undo)undo.style.display='flex';
+      // Auto-hide undo after 15s
+      setTimeout(()=>dismissUndo(),15000);
+    }
+  }catch(e){showToast('Error clearing alerts.','error');}
+}
+
+async function undoClearAlerts(){
+  dismissUndo();
+  try{
+    const resp=await fetch('/api/alerts/restore',{method:'POST'});
+    const data=await resp.json();
+    if(data.ok){
+      showToast('Alerts restored.','success');
+      await loadAlerts();
+    }else{showToast(data.message||'Could not restore.','error');}
+  }catch(e){showToast('Error restoring alerts.','error');}
+}
+
+function dismissUndo(){
+  const el=document.getElementById('undo-bar');
+  if(el)el.style.display='none';
 }

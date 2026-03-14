@@ -12,7 +12,7 @@
   <!-- Init Overlay -->
   <div id="init-overlay" class="init-overlay">
     <div class="init-content">
-      <div class="logo-icon" style="width:56px;height:56px;font-size:24px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--support-accent),var(--accent));color:white;font-weight:700;margin:0 auto 20px;">G</div>
+      <div class="logo-icon" style="width:56px;height:56px;font-size:24px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--bg-primary);font-weight:700;margin:0 auto 20px;">G</div>
       <h2 style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">Drendel Gap Scanner</h2>
       <div id="init-status-text" style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;">Connecting...</div>
       <div class="init-progress"><div id="init-progress-bar" class="init-progress-bar"></div></div>
@@ -80,10 +80,19 @@
 
         <!-- Main Scanner Area -->
         <div class="scanner-main">
+          <div class="scanner-toolbar">
+            <button class="btn btn-ghost" onclick="confirmClearAlerts()" title="Clear all alerts">Clear Alerts</button>
+          </div>
           <div id="alerts-support" class="alert-section"></div>
           <div id="alerts-resistance" class="alert-section"></div>
           <div id="alerts-untested" class="alert-section"></div>
         </div>
+      </div>
+      <!-- Undo bar (shown after clearing) -->
+      <div id="undo-bar" class="undo-bar" style="display:none;">
+        <span>Alerts cleared.</span>
+        <button class="btn btn-secondary" onclick="undoClearAlerts()" style="padding:4px 12px;font-size:11px;">Undo</button>
+        <button class="btn btn-ghost" onclick="dismissUndo()" style="font-size:14px;">✕</button>
       </div>
     </div>
 
