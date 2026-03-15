@@ -107,6 +107,7 @@ class ScannerStatus:
     """Current scanner state."""
     running: bool = False
     last_scan: Optional[str] = None
+    last_eod_update: Optional[str] = None
     symbol_count: int = 0
     zone_count: int = 0
     alert_count: int = 0

@@ -394,6 +394,7 @@ async def _rebuild_zones_background(username, fetcher, watchlist, lookback, max_
             logger.error(f"[{username}] EOD update error for {symbol}: {e}")
 
     state["status"].zone_count = sum(len(z) for z in state["zones"].values())
+    state["status"].last_eod_update = now_et().strftime("%Y-%m-%d %H:%M:%S ET")
     _save_cached_zones(user_dir, state["zones"])
     logger.info(f"[{username}] EOD update complete. {state['status'].zone_count} active zones.")
 

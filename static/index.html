@@ -4,20 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Drendel Gap Scanner</title>
-  <link rel="stylesheet" href="/static/style.css?v=10">
+  <link rel="stylesheet" href="/static/style.css?v=11">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23080808'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%237c9a5e'>G</text></svg>">
 </head>
 <body>
   <div id="init-overlay" class="init-overlay"><div class="init-content"><div style="width:40px;height:40px;font-size:18px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--olive);color:#000;font-weight:700;margin:0 auto 12px;">G</div><div id="init-status-text" style="font-size:12px;color:var(--text-2);margin-bottom:16px;">Loading...</div><div class="init-progress"><div id="init-progress-bar" class="init-progress-bar"></div></div><div id="init-detail" style="font-family:'DM Mono';font-size:9px;color:var(--text-4);margin-top:8px;min-height:12px;"></div></div></div>
   <div id="toast-container" class="toast-container"></div>
   <div id="chart-modal" class="chart-modal" style="display:none;"><div class="chart-modal-backdrop" onclick="closeChart()"></div><div class="chart-modal-content"><div class="chart-header"><span id="chart-symbol" class="chart-symbol"></span><div id="chart-tf-bar" style="display:flex;gap:2px;"></div><button class="chart-close" onclick="closeChart()">✕</button></div><div id="chart-container" class="chart-container"></div></div></div>
-  <header class="header"><div class="header-inner"><div class="logo"><div class="logo-icon">G</div><div class="logo-text">DRENDEL <span>SCANNER</span></div></div><div class="header-status"><div class="status-pill"><span id="symbol-count">0</span> sym</div><div class="status-pill"><span id="zone-count">0</span> zones</div><div class="status-pill"><div id="status-dot" class="status-dot"></div><span id="status-text">—</span></div><button class="btn btn-secondary" onclick="forceRefresh()" style="padding:2px 6px;font-size:9px;">↻</button><button class="btn btn-secondary" onclick="doLogout()" style="padding:2px 6px;font-size:9px;">Out</button><nav class="tab-bar"><button class="tab-btn active" data-tab="scanner">Scanner <span class="tab-count">0</span></button><button class="tab-btn" data-tab="zones">Zones</button><button class="tab-btn" data-tab="settings">Settings</button><button class="tab-btn" data-tab="setup">Setup</button></nav></div></div></header>
+  <header class="header"><div class="header-inner"><div class="logo"><div class="logo-icon">G</div><div class="logo-text">DRENDEL <span>SCANNER</span></div></div><div class="header-status"><div class="status-pill"><span id="symbol-count">0</span> sym</div><div class="status-pill"><span id="zone-count">0</span> zones</div><div class="status-pill"><div id="status-dot" class="status-dot"></div><span id="status-text">—</span></div><button class="btn btn-secondary" onclick="forceRefresh()" style="padding:2px 6px;font-size:9px;">↻</button><button class="btn btn-secondary" onclick="doLogout()" style="padding:2px 6px;font-size:9px;">Logout</button><nav class="tab-bar"><button class="tab-btn active" data-tab="scanner">Scanner <span class="tab-count">0</span></button><button class="tab-btn" data-tab="zones">Zones</button><button class="tab-btn" data-tab="settings">Settings</button><button class="tab-btn" data-tab="setup">Setup</button></nav></div></div></header>
   <main class="main">
     <div id="tab-scanner" class="tab-content active">
+      <div style="display:flex;gap:12px;margin-bottom:8px;font-family:'DM Mono';font-size:9px;color:var(--text-4);"><span>Last scan: <span id="last-scan-time" style="color:var(--text-3)">—</span></span><span>Last zone build: <span id="last-build-time" style="color:var(--text-3)">—</span></span></div>
       <div class="scanner-layout"><div class="alert-sidebar"><div class="sidebar-header"><span class="sidebar-title">Feed</span><span id="feed-count" class="sidebar-count">0</span></div><div id="alert-feed" class="alert-feed"><div class="empty-state"><div class="empty-state-text">No alerts yet.</div></div></div></div><div class="scanner-main"><div class="scanner-toolbar"><button class="btn btn-ghost" onclick="confirmClearAlerts()">Clear</button></div><div id="alerts-support" class="alert-section"></div><div id="alerts-resistance" class="alert-section"></div><div id="alerts-untested" class="alert-section"></div></div></div>
       <div id="undo-bar" class="undo-bar" style="display:none;"><span>Cleared.</span><button class="btn btn-secondary" onclick="undoClearAlerts()" style="padding:2px 8px;font-size:9px;">Undo</button><button class="btn btn-ghost" onclick="dismissUndo()">✕</button></div>
     </div>
-    <div id="tab-zones" class="tab-content"><div id="zone-explorer-content"><div class="loading-overlay"><div class="loading-spinner"></div></div></div></div>
+    <div id="tab-zones" class="tab-content"><div style="margin-bottom:8px;"><input type="text" id="zone-search" placeholder="Search by ticker..." oninput="renderZoneTable()" style="font-size:10px;max-width:200px;"></div><div id="zone-explorer-content"><div class="loading-overlay"><div class="loading-spinner"></div></div></div></div>
     <div id="tab-settings" class="tab-content">
       <div class="settings-grid">
         <!-- Combined Alerts & Scan -->
@@ -68,6 +69,6 @@
     </div>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=10"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>
