@@ -575,6 +575,22 @@ else:
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class CacheControlMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/static/"):
+            # Short cache for static files — browser will revalidate often
+            response.headers["Cache-Control"] = "public, max-age=60"
+        elif path.startswith("/api/") or path == "/" or path == "/login":
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        return response
+
+app.add_middleware(CacheControlMiddleware)
+
+
 def _no_cache(resp):
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return resp
