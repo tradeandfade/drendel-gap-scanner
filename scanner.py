@@ -560,8 +560,8 @@ async def index(request: Request):
     if not username:
         return _no_cache(FileResponse(str(static_dir / "login.html")))
 
-    # Start scanner if not running
-    await start_user_scanner(username)
+    # Start scanner in background — DON'T await, let page load immediately
+    asyncio.create_task(start_user_scanner(username))
     return _no_cache(FileResponse(str(static_dir / "index.html")))
 
 
@@ -772,7 +772,7 @@ async def trigger_reinitialize(request: Request):
 
 @app.get("/api/chart/{symbol}")
 async def get_chart_data(symbol: str, request: Request):
-    """Return bars and gap zones for charting. Supports timeframe query param."""
+    """Return bars and gap zones for charting."""
     username = get_current_user(request)
     state = get_user_state(username)
     user_dir = auth.get_user_data_dir(username)
@@ -780,7 +780,6 @@ async def get_chart_data(symbol: str, request: Request):
     fetcher = state.get("fetcher")
 
     symbol = symbol.upper()
-    # Timeframe from query param, default daily
     tf = request.query_params.get("tf", "1Day")
     valid_tfs = {"1Min", "5Min", "15Min", "30Min", "1Hour", "4Hour", "1Day", "1Week"}
     if tf not in valid_tfs:
@@ -789,18 +788,18 @@ async def get_chart_data(symbol: str, request: Request):
     if not fetcher:
         raise HTTPException(status_code=400, detail="Scanner not initialized")
 
-    # Use more lookback for daily/weekly charts (5 years)
-    lookback = 1260 if tf in ("1Day", "1Week") else cfg.get("lookback_days", 252)
+    # Fetch bars — extra history so MAs have data from the start
+    # For daily: 5+ years. For intraday: as much as Alpaca allows.
+    lookback_map = {"1Week": 2500, "1Day": 1500, "4Hour": 180, "1Hour": 60, "30Min": 30, "15Min": 20, "5Min": 10, "1Min": 5}
+    lookback = lookback_map.get(tf, 1500)
+
     bars = await fetcher.fetch_bars(symbol, tf, lookback)
 
-    # Format timestamps based on timeframe
     if tf in ("1Day", "1Week"):
         bar_data = [{"date": b.bar_date.isoformat(), "open": b.open, "high": b.high, "low": b.low, "close": b.close} for b in bars]
     else:
-        # Intraday: use unix timestamp
         bar_data = [{"date": int(b.bar_date.timestamp()), "open": b.open, "high": b.high, "low": b.low, "close": b.close} for b in bars]
 
-    # Get zones for this symbol
     zones = state["zones"].get(symbol, [])
     zone_data = [z.to_dict() for z in zones]
 
