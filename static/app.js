@@ -86,14 +86,14 @@ function card(a,type){
       <div class="card-symbol">${a.symbol}</div>
       <div class="card-price">$${a.current_price.toFixed(2)}</div>
       ${badge}
-      <div class="card-zone-labels">
-        <span class="card-zone-label">$${z.zone_top.toFixed(2)}</span>
-        <span class="card-zone-label">$${z.zone_bottom.toFixed(2)}</span>
-      </div>
     </div>
-    <div class="v-meter">
-      <div class="v-meter-fill" style="${fillStyle}"></div>
-      <div class="v-meter-marker" style="top:${markerPct}%"></div>
+    <div class="card-meter-wrap">
+      <span class="meter-label top">$${z.zone_top.toFixed(2)}</span>
+      <div class="v-meter">
+        <div class="v-meter-fill" style="${fillStyle}"></div>
+        <div class="v-meter-marker" style="top:${markerPct}%"></div>
+      </div>
+      <span class="meter-label bot">$${z.zone_bottom.toFixed(2)}</span>
     </div>
   </div>`;
 }
@@ -126,42 +126,47 @@ async function openChart(sym,tf){
     const bars=d.bars.map(b=>({time:b.date,open:b.open,high:b.high,low:b.low,close:b.close}));
     cs.setData(bars);
 
-    // Zone overlays — colored area between two lines
+    // Zone overlays — use baseline series for proper horizontal band fills
     if(d.zones&&d.zones.length&&bars.length){
       for(const z of d.zones){
-        let topColor,botColor;
-        if(z.is_untested){topColor='rgba(176,160,64,0.25)';botColor='rgba(176,160,64,0.05)';}
-        else if(z.base_type==='support'){topColor='rgba(106,170,92,0.25)';botColor='rgba(106,170,92,0.05)';}
-        else{topColor='rgba(196,92,76,0.25)';botColor='rgba(196,92,76,0.05)';}
+        let topClr, botClr, fillClr;
+        if(z.is_untested){topClr='rgba(176,160,64,0.4)';fillClr='rgba(176,160,64,0.08)';}
+        else if(z.base_type==='support'){topClr='rgba(106,170,92,0.4)';fillClr='rgba(106,170,92,0.08)';}
+        else{topClr='rgba(196,92,76,0.4)';fillClr='rgba(196,92,76,0.08)';}
 
         // Find start bar for zone
         let si=0;
         for(let i=0;i<bars.length;i++){
-          const bt=typeof bars[i].time==='string'?bars[i].time:bars[i].time;
-          if(bt>=z.created_date){si=i;break;}
+          if(bars[i].time>=z.created_date){si=i;break;}
         }
         const pts=bars.slice(si);
         if(pts.length<2)continue;
 
-        // Top line with fill down to bottom
-        const topSeries=chart.addLineSeries({color:topColor,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
-        const botSeries=chart.addLineSeries({color:botColor,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
-        topSeries.setData(pts.map(p=>({time:p.time,value:z.zone_top})));
-        botSeries.setData(pts.map(p=>({time:p.time,value:z.zone_bottom})));
-
-        // Use area between series for shading effect
-        // Create an area series for the fill
-        const fillColor=z.is_untested?'rgba(176,160,64,0.06)':z.base_type==='support'?'rgba(106,170,92,0.06)':'rgba(196,92,76,0.06)';
-        const areaSeries=chart.addAreaSeries({
-          topColor:fillColor,bottomColor:fillColor,lineColor:'transparent',lineWidth:0,
-          priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,
-        });
-        // Set area to zone_top and baseline to zone_bottom
-        areaSeries.setData(pts.map(p=>({time:p.time,value:z.zone_top})));
-        areaSeries.applyOptions({baselineValue:z.zone_bottom});
-        // Actually, area series fills from line to bottom of chart. Use a trick:
-        // We'll just keep the two border lines visible. The area approach doesn't work perfectly
-        // with lightweight-charts for horizontal bands. The lines are sufficient with good opacity.
+        // Baseline series: draws a line at zone_top, fills between zone_top and baseline (zone_bottom)
+        // topFillColor1/2 = color above baseline, bottomFillColor1/2 = color below baseline
+        // Since our line IS at zone_top and baseline IS at zone_bottom, the fill between them = topFill
+        try{
+          const bs=chart.addBaselineSeries({
+            baseValue:{type:'price',price:z.zone_bottom},
+            topLineColor:topClr,
+            bottomLineColor:'transparent',
+            topFillColor1:fillClr,
+            topFillColor2:fillClr,
+            bottomFillColor1:'transparent',
+            bottomFillColor2:'transparent',
+            lineWidth:1,
+            priceLineVisible:false,
+            lastValueVisible:false,
+            crosshairMarkerVisible:false,
+          });
+          bs.setData(pts.map(p=>({time:p.time,value:z.zone_top})));
+        }catch(e){
+          // Fallback: just draw two price lines
+          const topL=chart.addLineSeries({color:topClr,lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+          const botL=chart.addLineSeries({color:topClr,lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+          topL.setData(pts.map(p=>({time:p.time,value:z.zone_top})));
+          botL.setData(pts.map(p=>({time:p.time,value:z.zone_bottom})));
+        }
       }
     }
 
