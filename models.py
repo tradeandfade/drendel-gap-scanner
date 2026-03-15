@@ -9,7 +9,7 @@ from typing import Optional
 class BarData:
     """OHLCV bar data for a single period."""
     symbol: str
-    bar_date: date
+    bar_date: date | datetime  # date for daily/weekly, datetime for intraday
     open: float
     high: float
     low: float

@@ -90,8 +90,29 @@ class AlpacaFetcher:
         self, symbol: str, lookback_days: int = 252
     ) -> list[BarData]:
         """Fetch daily OHLCV bars for a symbol."""
+        return await self.fetch_bars(symbol, "1Day", lookback_days)
+
+    async def fetch_bars(
+        self, symbol: str, timeframe: str = "1Day", lookback_days: int = 252
+    ) -> list[BarData]:
+        """Fetch OHLCV bars for any timeframe.
+        
+        Timeframe options: 1Min, 5Min, 15Min, 30Min, 1Hour, 4Hour, 1Day, 1Week
+        """
         end_date = date.today()
-        start_date = end_date - timedelta(days=int(lookback_days * 1.5))  # Extra buffer for weekends/holidays
+        # More history for daily/weekly, less for intraday
+        if timeframe in ("1Day", "1Week"):
+            start_date = end_date - timedelta(days=int(lookback_days * 1.5))
+        elif timeframe == "4Hour":
+            start_date = end_date - timedelta(days=90)
+        elif timeframe == "1Hour":
+            start_date = end_date - timedelta(days=30)
+        elif timeframe in ("30Min", "15Min"):
+            start_date = end_date - timedelta(days=14)
+        elif timeframe in ("5Min", "1Min"):
+            start_date = end_date - timedelta(days=5)
+        else:
+            start_date = end_date - timedelta(days=int(lookback_days * 1.5))
 
         bars = []
         page_token = None
@@ -103,7 +124,7 @@ class AlpacaFetcher:
                 params = {
                     "start": start_date.isoformat(),
                     "end": end_date.isoformat(),
-                    "timeframe": "1Day",
+                    "timeframe": timeframe,
                     "limit": 10000,
                     "adjustment": "split",
                     "feed": "iex",
@@ -128,10 +149,10 @@ class AlpacaFetcher:
                     break
 
                 for b in raw_bars:
-                    bar_date = datetime.fromisoformat(b["t"].replace("Z", "+00:00")).astimezone(ET).date()
+                    ts = datetime.fromisoformat(b["t"].replace("Z", "+00:00")).astimezone(ET)
                     bars.append(BarData(
                         symbol=symbol,
-                        bar_date=bar_date,
+                        bar_date=ts.date() if timeframe in ("1Day", "1Week") else ts,
                         open=float(b["o"]),
                         high=float(b["h"]),
                         low=float(b["l"]),
@@ -146,11 +167,7 @@ class AlpacaFetcher:
         except Exception as e:
             logger.error(f"Error fetching bars for {symbol}: {e}")
 
-        # Trim to lookback_days
-        if len(bars) > lookback_days:
-            bars = bars[-lookback_days:]
-
-        logger.info(f"Fetched {len(bars)} daily bars for {symbol}")
+        logger.info(f"Fetched {len(bars)} {timeframe} bars for {symbol}")
         return bars
 
     async def fetch_latest_prices(self, symbols: list[str]) -> dict[str, float]:

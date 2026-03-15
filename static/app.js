@@ -1,5 +1,5 @@
 const API={alerts:'/api/alerts',zones:'/api/zones',status:'/api/status',settings:'/api/settings',watchlist:'/api/watchlist',setup:'/api/setup',reinit:'/api/reinitialize'};
-let state={activeTab:'scanner',alerts:{support:[],resistance:[],untested:[]},zones:[],status:{},settings:{},refreshTimer:null,zoneSortCol:'distance_pct',zoneSortDir:'asc',zoneFilter:'all',alertFeed:[],previousAlertKeys:new Set(),chart:null};
+let state={activeTab:'scanner',alerts:{support:[],resistance:[],untested:[]},zones:[],status:{},settings:{},refreshTimer:null,zoneSortCol:'distance_pct',zoneSortDir:'asc',zoneFilter:'all',alertFeed:[],previousAlertKeys:new Set(),chart:null,chartSymbol:null,chartTf:'1Day'};
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 /* Auth */
@@ -59,8 +59,6 @@ async function loadAlerts(){try{const r=await fetch(API.alerts);state.alerts=awa
 async function loadZones(){try{const r=await fetch(API.zones);state.zones=await r.json();renderZoneTable();}catch(e){}}
 async function loadStatus(){try{const r=await fetch(API.status);state.status=await r.json();renderStatus();}catch(e){}}
 async function loadSettings(){try{const r=await fetch(API.settings);state.settings=await r.json();}catch(e){}}
-
-/* Refresh */
 function startAutoRefresh(){stopAutoRefresh();const ms=Math.max((state.settings.scan_interval_seconds||300)*1000,10000);state.refreshTimer=setInterval(async()=>{await loadAlerts();await loadStatus();if(state.activeTab==='zones')await loadZones();},ms);}
 function stopAutoRefresh(){if(state.refreshTimer){clearInterval(state.refreshTimer);state.refreshTimer=null;}}
 
@@ -68,7 +66,9 @@ function stopAutoRefresh(){if(state.refreshTimer){clearInterval(state.refreshTim
 function renderStatus(){const s=state.status,d=document.getElementById('status-dot'),t=document.getElementById('status-text');if(!d||!t)return;if(s.error){d.className='status-dot error';t.textContent='Error';}else if(s.running){d.className='status-dot active';t.textContent=s.last_scan||'Running';}else if(s.initialized){d.className='status-dot';t.textContent='Idle';}else{d.className='status-dot';t.textContent='—';}const sc=document.getElementById('symbol-count'),zc=document.getElementById('zone-count');if(sc)sc.textContent=s.symbol_count||0;if(zc)zc.textContent=s.zone_count||0;}
 function updateAlertCounts(){const a=state.alerts,n=(a.support?.length||0)+(a.resistance?.length||0)+(a.untested?.length||0);const e=document.querySelector('[data-tab="scanner"] .tab-count');if(e)e.textContent=n;}
 
-/* Alerts */
+/* ========================================================================
+   Alerts with corrected meter direction
+   ======================================================================== */
 function renderAlerts(){
   renderSection('support',state.alerts.support||[],'S','Support');
   renderSection('resistance',state.alerts.resistance||[],'R','Resistance');
@@ -81,11 +81,45 @@ function renderSection(type,alerts,icon,title){
   c.innerHTML=h+`<div class="alert-grid">${alerts.map(a=>card(a,type)).join('')}</div>`;
 }
 function card(a,type){
-  const z=a.zone,sz=z.zone_top-z.zone_bottom;
-  let pct=0;if(sz>0){pct=type==='resistance'?((a.current_price-z.zone_bottom)/sz)*100:((z.zone_top-a.current_price)/sz)*100;}
+  const z=a.zone, sz=z.zone_top-z.zone_bottom;
+  let pct=0;
+  if(sz>0){
+    // Support: price enters from TOP, moves toward bottom. Meter fills right-to-left.
+    // So marker position = how far from the top (right side).
+    // Resistance: price enters from BOTTOM, moves toward top. Meter fills left-to-right.
+    if(type==='support'){
+      // Price at zone_top = 0% (right edge), price at zone_bottom = 100% (left edge)
+      // Marker position from LEFT: price closer to top = marker near right
+      pct=((a.current_price - z.zone_bottom) / sz) * 100;
+    } else if(type==='resistance'){
+      // Price at zone_bottom = 0% (left edge), price at zone_top = 100% (right edge)
+      pct=((a.current_price - z.zone_bottom) / sz) * 100;
+    } else {
+      // Untested: determine direction from price relative to zone midpoint
+      pct=((a.current_price - z.zone_bottom) / sz) * 100;
+    }
+  }
   pct=Math.max(0,Math.min(100,pct));
-  const badges=a.is_first_test?'<div class="card-badges"><span class="badge first-test">1st Test</span></div>':'';
-  return `<div class="alert-card ${type}" onclick="openChart('${a.symbol}')"><div class="card-top"><span class="card-symbol">${a.symbol}</span><span class="card-price">$${a.current_price.toFixed(2)}</span></div>${badges}<div class="zone-meter"><div class="zone-meter-bar"><div class="zone-meter-fill" style="width:${pct}%"></div><div class="zone-meter-marker" style="left:${pct}%"></div></div><div class="zone-meter-labels"><span class="zone-meter-label">$${z.zone_bottom.toFixed(2)}</span><span class="zone-meter-label">$${z.zone_top.toFixed(2)}</span></div></div></div>`;
+
+  // For support, the fill goes from right to left (price dropping into zone)
+  // For resistance, fill goes from left to right (price rising into zone)
+  let fillStyle, markerPos;
+  if(type==='support'){
+    // Fill from right edge to marker position
+    const fillWidth = 100 - pct;
+    fillStyle = `width:${fillWidth}%;margin-left:${pct}%`;
+    markerPos = pct;
+  } else {
+    // Fill from left edge to marker position
+    fillStyle = `width:${pct}%`;
+    markerPos = pct;
+  }
+
+  const badges=a.is_first_test?'<div class="card-badges"><span class="badge first-test">1st</span></div>':'';
+  return `<div class="alert-card ${type}" onclick="openChart('${a.symbol}')">
+    <div class="card-top"><span class="card-symbol">${a.symbol}</span><span class="card-price">$${a.current_price.toFixed(2)}</span></div>${badges}
+    <div class="zone-meter"><div class="zone-meter-bar"><div class="zone-meter-fill" style="${fillStyle}"></div><div class="zone-meter-marker" style="left:${markerPos}%"></div></div>
+    <div class="zone-meter-labels"><span class="zone-meter-label">$${z.zone_bottom.toFixed(2)}</span><span class="zone-meter-label">$${z.zone_top.toFixed(2)}</span></div></div></div>`;
 }
 
 /* Feed */
@@ -102,34 +136,140 @@ function renderFeed(){
   const c=document.getElementById('alert-feed'),cn=document.getElementById('feed-count');if(!c)return;
   if(cn)cn.textContent=state.alertFeed.length;
   if(!state.alertFeed.length){c.innerHTML='<div class="empty-state"><div class="empty-state-text">No alerts yet today.</div></div>';return;}
-  c.innerHTML=state.alertFeed.map(a=>{const t=a.feedTime?new Date(a.feedTime):new Date();const ts=t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});const lbl=a.feedType==='support'?'Support':a.feedType==='resistance'?'Resistance':'Untested';return `<div class="feed-item ${a.feedType} ${a.isNew?'new-alert':''}" onclick="openChart('${a.symbol}')"><span class="feed-sym">${a.symbol}</span><span class="feed-price">$${a.current_price.toFixed(2)}</span><span class="feed-time">${ts}</span><div class="feed-type">${lbl}</div></div>`;}).join('');
+  c.innerHTML=state.alertFeed.map(a=>{const t=a.feedTime?new Date(a.feedTime):new Date();const ts=t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});const lbl=a.feedType==='support'?'Sup':a.feedType==='resistance'?'Res':'Unt';return `<div class="feed-item ${a.feedType} ${a.isNew?'new-alert':''}" onclick="openChart('${a.symbol}')"><span class="feed-sym">${a.symbol}</span><span class="feed-price">$${a.current_price.toFixed(2)}</span><span class="feed-time">${ts}</span><div class="feed-type">${lbl}</div></div>`;}).join('');
 }
 
-/* Chart — FIXED height, NO ResizeObserver */
-async function openChart(sym){
+/* ========================================================================
+   Chart with timeframe selector, zone overlays, pre-calculated MAs
+   ======================================================================== */
+const TF_OPTIONS = [
+  {value:'1Min',label:'1m'},{value:'5Min',label:'5m'},{value:'15Min',label:'15m'},
+  {value:'30Min',label:'30m'},{value:'1Hour',label:'1H'},{value:'4Hour',label:'4H'},
+  {value:'1Day',label:'D'},{value:'1Week',label:'W'}
+];
+
+async function openChart(sym, tf){
+  tf = tf || state.chartTf || '1Day';
+  state.chartSymbol = sym;
+  state.chartTf = tf;
   document.getElementById('chart-modal').style.display='flex';
   document.getElementById('chart-symbol').textContent=sym;
+
+  // Render timeframe selector
+  const header = document.querySelector('.chart-header');
+  let tfBar = document.getElementById('chart-tf-bar');
+  if(!tfBar){
+    tfBar = document.createElement('div');
+    tfBar.id = 'chart-tf-bar';
+    tfBar.style.cssText = 'display:flex;gap:2px;';
+    header.insertBefore(tfBar, header.querySelector('.chart-close'));
+  }
+  tfBar.innerHTML = TF_OPTIONS.map(o=>`<button class="tf-btn ${o.value===tf?'active':''}" onclick="openChart('${sym}','${o.value}')">${o.label}</button>`).join('');
+
   const c=document.getElementById('chart-container');
-  c.innerHTML='<div class="loading-overlay"><div class="loading-spinner"></div><div class="loading-text">Loading chart...</div></div>';
+  c.innerHTML='<div class="loading-overlay"><div class="loading-spinner"></div><div class="loading-text">Loading...</div></div>';
+
+  // Close existing chart
+  if(state.chart){state.chart.remove();state.chart=null;}
+
   try{
-    const r=await fetch(`/api/chart/${sym}`);if(!r.ok){c.innerHTML='<div class="empty-state"><div class="empty-state-text">Could not load chart.</div></div>';return;}
+    const r=await fetch(`/api/chart/${sym}?tf=${tf}`);
+    if(!r.ok){c.innerHTML='<div class="empty-state"><div class="empty-state-text">Could not load chart.</div></div>';return;}
     const d=await r.json();c.innerHTML='';
-    // Fixed dimensions — no resize observer
-    const w=c.offsetWidth,h=c.offsetHeight;
-    const chart=LightweightCharts.createChart(c,{width:w,height:h,layout:{background:{type:'solid',color:'#0e0e0e'},textColor:'#777'},grid:{vertLines:{color:'#1a1a1a'},horzLines:{color:'#1a1a1a'}},crosshair:{mode:0},timeScale:{borderColor:'#1e1e1e'},rightPriceScale:{borderColor:'#1e1e1e'}});
-    state.chart=chart;
-    const cs=chart.addCandlestickSeries({upColor:'#6aaa5c',downColor:'#c45c4c',borderUpColor:'#6aaa5c',borderDownColor:'#c45c4c',wickUpColor:'#6aaa5c',wickDownColor:'#c45c4c'});
-    cs.setData(d.bars.map(b=>({time:b.date,open:b.open,high:b.high,low:b.low,close:b.close})));
-    const s=state.settings,closes=d.bars.map(b=>b.close);
-    [{p:10,t:s.chart?.ma10_type||'sma',c:s.chart?.ma10_color||'#f59e0b'},{p:20,t:s.chart?.ma20_type||'sma',c:s.chart?.ma20_color||'#3b82f6'},{p:50,t:s.chart?.ma50_type||'sma',c:s.chart?.ma50_color||'#a855f7'},{p:200,t:s.chart?.ma200_type||'sma',c:s.chart?.ma200_color||'#ef4444'}].forEach(ma=>{
-      const vals=ma.t==='ema'?calcEMA(closes,ma.p):calcSMA(closes,ma.p);
-      const ld=vals.map((v,i)=>v!==null?{time:d.bars[i].date,value:v}:null).filter(Boolean);
-      if(ld.length){const l=chart.addLineSeries({color:ma.c,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});l.setData(ld);}
-    });
-    chart.timeScale().fitContent();
+    renderChart(c, d, sym, tf);
   }catch(e){c.innerHTML='<div class="empty-state"><div class="empty-state-text">Chart error.</div></div>';}
 }
-function closeChart(){document.getElementById('chart-modal').style.display='none';if(state.chart){state.chart.remove();state.chart=null;}}
+
+function closeChart(){
+  document.getElementById('chart-modal').style.display='none';
+  if(state.chart){state.chart.remove();state.chart=null;}
+}
+
+function renderChart(container, data, symbol, tf){
+  const w=container.offsetWidth, h=container.offsetHeight;
+  const isIntraday = !['1Day','1Week'].includes(tf);
+
+  const chart=LightweightCharts.createChart(container,{
+    width:w, height:h,
+    layout:{background:{type:'solid',color:'#0a0a0a'},textColor:'#666'},
+    grid:{vertLines:{color:'#161616'},horzLines:{color:'#161616'}},
+    crosshair:{mode:0},
+    timeScale:{borderColor:'#1a1a1a', timeVisible:isIntraday, secondsVisible:false},
+    rightPriceScale:{borderColor:'#1a1a1a'},
+  });
+  state.chart=chart;
+
+  const cs=chart.addCandlestickSeries({
+    upColor:'#5a9a4c',downColor:'#b45040',
+    borderUpColor:'#5a9a4c',borderDownColor:'#b45040',
+    wickUpColor:'#5a9a4c',wickDownColor:'#b45040',
+  });
+  const bars=data.bars.map(b=>({time:b.date,open:b.open,high:b.high,low:b.low,close:b.close}));
+  cs.setData(bars);
+
+  // --- Zone overlays ---
+  if(data.zones && data.zones.length){
+    for(const z of data.zones){
+      // Support = green, Resistance = red, Untested = yellow
+      let color;
+      if(z.is_untested) color = 'rgba(200,180,60,0.07)';
+      else if(z.base_type==='support') color = 'rgba(90,154,76,0.08)';
+      else color = 'rgba(180,80,64,0.08)';
+
+      // Draw zone as two horizontal price lines with area between
+      const topLine = chart.addLineSeries({
+        color: z.is_untested ? 'rgba(200,180,60,0.3)' : z.base_type==='support' ? 'rgba(90,154,76,0.3)' : 'rgba(180,80,64,0.3)',
+        lineWidth:1, lineStyle:2, // dashed
+        priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false,
+      });
+      const botLine = chart.addLineSeries({
+        color: z.is_untested ? 'rgba(200,180,60,0.3)' : z.base_type==='support' ? 'rgba(90,154,76,0.3)' : 'rgba(180,80,64,0.3)',
+        lineWidth:1, lineStyle:2,
+        priceLineVisible:false, lastValueVisible:false, crosshairMarkerVisible:false,
+      });
+
+      // Extend zone lines across the full visible chart
+      const startTime = bars.length > 0 ? bars[0].time : null;
+      const endTime = bars.length > 0 ? bars[bars.length-1].time : null;
+      if(startTime && endTime){
+        // Find the bar closest to zone creation date, or use first bar
+        const zoneStart = z.created_date;
+        let startIdx = 0;
+        for(let i=0;i<bars.length;i++){
+          const bt = typeof bars[i].time === 'number' ? bars[i].time : bars[i].time;
+          if(bt >= zoneStart){startIdx=i;break;}
+        }
+        const lineData = bars.slice(startIdx).map(b=>({time:b.time,value:0}));
+        if(lineData.length > 0){
+          topLine.setData(lineData.map(p=>({time:p.time,value:z.zone_top})));
+          botLine.setData(lineData.map(p=>({time:p.time,value:z.zone_bottom})));
+        }
+      }
+    }
+  }
+
+  // --- Moving averages with pre-calculated full history ---
+  // To show MAs from the start of the chart, we need enough data points before the visible range.
+  // The API now sends up to 5 years of data, so MAs should populate early.
+  const s=state.settings, closes=data.bars.map(b=>b.close);
+  const maConfig=[
+    {p:10,t:s.chart?.ma10_type||'sma',c:s.chart?.ma10_color||'#f59e0b'},
+    {p:20,t:s.chart?.ma20_type||'sma',c:s.chart?.ma20_color||'#3b82f6'},
+    {p:50,t:s.chart?.ma50_type||'sma',c:s.chart?.ma50_color||'#a855f7'},
+    {p:200,t:s.chart?.ma200_type||'sma',c:s.chart?.ma200_color||'#ef4444'},
+  ];
+  for(const ma of maConfig){
+    const vals = ma.t==='ema' ? calcEMA(closes,ma.p) : calcSMA(closes,ma.p);
+    const ld = vals.map((v,i)=>v!==null?{time:data.bars[i].date,value:v}:null).filter(Boolean);
+    if(ld.length){
+      const line=chart.addLineSeries({color:ma.c,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+      line.setData(ld);
+    }
+  }
+
+  chart.timeScale().fitContent();
+}
+
 function calcSMA(d,p){return d.map((v,i)=>{if(i<p-1)return null;let s=0;for(let j=i-p+1;j<=i;j++)s+=d[j];return Math.round((s/p)*100)/100;});}
 function calcEMA(d,p){const k=2/(p+1);const r=[];let e=null;for(let i=0;i<d.length;i++){if(i<p-1){r.push(null);continue;}if(e===null){let s=0;for(let j=i-p+1;j<=i;j++)s+=d[j];e=s/p;}else e=d[i]*k+e*(1-k);r.push(Math.round(e*100)/100);}return r;}
 
@@ -165,7 +305,7 @@ function renderSettings(){
 function sv(id,v){const e=document.getElementById(id);if(e&&v!==undefined)e.value=v;}
 function sc(id,v){const e=document.getElementById(id);if(e)e.checked=!!v;}
 
-/* Watchlist Manager */
+/* Watchlist */
 let wlSymbols=[];
 async function loadWatchlist(){try{const r=await fetch(API.watchlist);const d=await r.json();wlSymbols=(d.watchlist||[]).slice();renderWL();}catch(e){}}
 function renderWL(){

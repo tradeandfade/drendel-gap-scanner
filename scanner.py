@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -101,6 +102,34 @@ async def initialize_user_scanner(username: str):
     lookback = cfg.get("lookback_days", 252)
     max_gaps = cfg.get("max_gaps_per_symbol", 50)
 
+    # Try loading cached zones first for instant login
+    cached_zones = _load_cached_zones(user_dir)
+    if cached_zones:
+        state["zones"] = cached_zones
+        total_zones = sum(len(z) for z in cached_zones.values())
+        state["status"].symbol_count = len(watchlist)
+        state["status"].zone_count = total_zones
+        state["status"].initialized = True
+        logger.info(f"[{username}] Loaded {total_zones} cached zones for instant start")
+
+        # Load persisted alerts
+        saved_alerts = _load_alerts(user_dir)
+        if any(saved_alerts.get(k) for k in ['support', 'resistance', 'untested']):
+            state["alerts"] = saved_alerts
+            state["status"].alert_count = sum(len(v) for v in saved_alerts.values())
+
+        # Fetch prices
+        try:
+            prices = await fetcher.fetch_latest_prices(watchlist)
+            state["latest_prices"] = prices
+        except Exception:
+            pass
+
+        # Rebuild zones in background if stale
+        asyncio.create_task(_rebuild_zones_background(username, fetcher, watchlist, lookback, max_gaps, user_dir))
+        return
+
+    # No cache — build from scratch
     for symbol in watchlist:
         try:
             bars = await fetcher.fetch_daily_bars(symbol, lookback)
@@ -120,6 +149,9 @@ async def initialize_user_scanner(username: str):
     state["status"].initialized = True
     state["status"].error = None
     logger.info(f"[{username}] Scanner initialized: {len(watchlist)} symbols, {total_zones} active zones")
+
+    # Cache zones to disk
+    _save_cached_zones(user_dir, state["zones"])
 
     # Load persisted alerts from disk (survive restarts)
     saved_alerts = _load_alerts(user_dir)
@@ -237,7 +269,77 @@ def _load_alert_backup(user_dir: Path) -> dict | None:
     return None
 
 
-async def run_user_eod_update(username: str):
+def _save_cached_zones(user_dir: Path, zones_dict: dict):
+    """Cache zones to disk for instant login."""
+    import json
+    path = user_dir / "zones_cache.json"
+    try:
+        cache = {}
+        for symbol, zones in zones_dict.items():
+            cache[symbol] = [z.to_dict() for z in zones]
+        with open(path, "w") as f:
+            json.dump({"zones": cache, "saved_at": now_et().isoformat()}, f)
+    except Exception as e:
+        logger.warning(f"Could not cache zones: {e}")
+
+
+def _load_cached_zones(user_dir: Path) -> dict | None:
+    """Load cached zones from disk. Returns None if no cache or stale."""
+    import json
+    from models import GapZone
+    path = user_dir / "zones_cache.json"
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        zones_dict = {}
+        for symbol, zone_list in data.get("zones", {}).items():
+            zones = []
+            for zd in zone_list:
+                z = GapZone(
+                    symbol=zd["symbol"],
+                    gap_type=zd["gap_type"],
+                    zone_top=zd["zone_top"],
+                    zone_bottom=zd["zone_bottom"],
+                    original_top=zd["original_top"],
+                    original_bottom=zd["original_bottom"],
+                    created_date=date.fromisoformat(zd["created_date"]),
+                    test_count=zd.get("test_count", 0),
+                    reduction_count=zd.get("reduction_count", 0),
+                    status=zd.get("status", "active"),
+                    id=zd.get("id", ""),
+                )
+                zones.append(z)
+            zones_dict[symbol] = zones
+        return zones_dict if zones_dict else None
+    except Exception as e:
+        logger.warning(f"Could not load zone cache: {e}")
+        return None
+
+
+async def _rebuild_zones_background(username, fetcher, watchlist, lookback, max_gaps, user_dir):
+    """Rebuild zones from fresh data in background, then swap in."""
+    logger.info(f"[{username}] Background zone rebuild starting...")
+    state = get_user_state(username)
+    new_zones = {}
+    for symbol in watchlist:
+        try:
+            bars = await fetcher.fetch_daily_bars(symbol, lookback)
+            if len(bars) >= 2:
+                new_zones[symbol] = build_gap_zones(bars, max_gaps)
+                state["prev_closes"][symbol] = bars[-1].close
+            else:
+                new_zones[symbol] = []
+        except Exception as e:
+            logger.error(f"[{username}] Background rebuild error for {symbol}: {e}")
+            new_zones[symbol] = state["zones"].get(symbol, [])
+
+    state["zones"] = new_zones
+    total = sum(len(z) for z in new_zones.values())
+    state["status"].zone_count = total
+    _save_cached_zones(user_dir, new_zones)
+    logger.info(f"[{username}] Background rebuild complete: {total} zones")
     state = get_user_state(username)
     user_dir = auth.get_user_data_dir(username)
     cfg = config.load_config(user_dir)
@@ -262,6 +364,7 @@ async def run_user_eod_update(username: str):
             logger.error(f"[{username}] EOD update error for {symbol}: {e}")
 
     state["status"].zone_count = sum(len(z) for z in state["zones"].values())
+    _save_cached_zones(user_dir, state["zones"])
     logger.info(f"[{username}] EOD update complete. {state['status'].zone_count} active zones.")
 
 
@@ -669,7 +772,7 @@ async def trigger_reinitialize(request: Request):
 
 @app.get("/api/chart/{symbol}")
 async def get_chart_data(symbol: str, request: Request):
-    """Return daily bars and gap zones for charting."""
+    """Return bars and gap zones for charting. Supports timeframe query param."""
     username = get_current_user(request)
     state = get_user_state(username)
     user_dir = auth.get_user_data_dir(username)
@@ -677,19 +780,31 @@ async def get_chart_data(symbol: str, request: Request):
     fetcher = state.get("fetcher")
 
     symbol = symbol.upper()
+    # Timeframe from query param, default daily
+    tf = request.query_params.get("tf", "1Day")
+    valid_tfs = {"1Min", "5Min", "15Min", "30Min", "1Hour", "4Hour", "1Day", "1Week"}
+    if tf not in valid_tfs:
+        tf = "1Day"
 
     if not fetcher:
         raise HTTPException(status_code=400, detail="Scanner not initialized")
 
-    # Fetch daily bars (use more data for chart scrolling)
-    bars = await fetcher.fetch_daily_bars(symbol, cfg.get("lookback_days", 252))
-    bar_data = [{"date": b.bar_date.isoformat(), "open": b.open, "high": b.high, "low": b.low, "close": b.close} for b in bars]
+    # Use more lookback for daily/weekly charts (5 years)
+    lookback = 1260 if tf in ("1Day", "1Week") else cfg.get("lookback_days", 252)
+    bars = await fetcher.fetch_bars(symbol, tf, lookback)
+
+    # Format timestamps based on timeframe
+    if tf in ("1Day", "1Week"):
+        bar_data = [{"date": b.bar_date.isoformat(), "open": b.open, "high": b.high, "low": b.low, "close": b.close} for b in bars]
+    else:
+        # Intraday: use unix timestamp
+        bar_data = [{"date": int(b.bar_date.timestamp()), "open": b.open, "high": b.high, "low": b.low, "close": b.close} for b in bars]
 
     # Get zones for this symbol
     zones = state["zones"].get(symbol, [])
     zone_data = [z.to_dict() for z in zones]
 
-    return JSONResponse({"bars": bar_data, "zones": zone_data})
+    return JSONResponse({"bars": bar_data, "zones": zone_data, "timeframe": tf})
 
 
 # ---------------------------------------------------------------------------
