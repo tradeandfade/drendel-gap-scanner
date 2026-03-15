@@ -104,13 +104,13 @@ class AlpacaFetcher:
         if timeframe in ("1Day", "1Week"):
             start_date = end_date - timedelta(days=int(lookback_days * 1.5))
         elif timeframe == "4Hour":
-            start_date = end_date - timedelta(days=90)
+            start_date = end_date - timedelta(days=lookback_days)
         elif timeframe == "1Hour":
-            start_date = end_date - timedelta(days=30)
+            start_date = end_date - timedelta(days=lookback_days)
         elif timeframe in ("30Min", "15Min"):
-            start_date = end_date - timedelta(days=14)
+            start_date = end_date - timedelta(days=lookback_days)
         elif timeframe in ("5Min", "1Min"):
-            start_date = end_date - timedelta(days=5)
+            start_date = end_date - timedelta(days=lookback_days)
         else:
             start_date = end_date - timedelta(days=int(lookback_days * 1.5))
 

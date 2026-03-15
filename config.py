@@ -11,8 +11,7 @@ DEFAULT_CONFIG = {
     "lookback_days": 252,
     "max_gaps_per_symbol": 50,
     "alert_sensitivity": {
-        "support_proximity_pct": 0.0,
-        "resistance_proximity_pct": 0.0,
+        "proximity_pct": 0.0,
         "alert_on_first_test_only": False,
     },
     "display": {

@@ -62,13 +62,12 @@
       </div>
       <div id="undo-bar" class="undo-bar" style="display:none;"><span>Cleared.</span><button class="btn btn-secondary" onclick="undoClearAlerts()" style="padding:2px 8px;font-size:9px;">Undo</button><button class="btn btn-ghost" onclick="dismissUndo()">✕</button></div>
     </div>
-    <div id="tab-zones" class="tab-content"><div id="zone-explorer-content"><div class="loading-overlay"><div class="loading-spinner"></div><div class="loading-text">Loading...</div></div></div></div>
+    <div id="tab-zones" class="tab-content"><div id="zone-explorer-content"><div class="loading-overlay"><div class="loading-spinner"></div></div></div></div>
     <div id="tab-settings" class="tab-content">
       <div class="settings-grid">
         <div class="settings-card">
           <div class="settings-card-title">Alerts</div>
-          <div class="form-group"><label class="form-label">Support Proximity (%)</label><input type="number" id="setting-support-prox" value="0" min="0" max="10" step="0.1"><div class="form-hint">0 = zone entry only</div></div>
-          <div class="form-group"><label class="form-label">Resistance Proximity (%)</label><input type="number" id="setting-resistance-prox" value="0" min="0" max="10" step="0.1"></div>
+          <div class="form-group"><label class="form-label">Zone Proximity (%)</label><input type="number" id="setting-proximity" value="0" min="0" max="10" step="0.1"><div class="form-hint">0 = only when price enters zone. Higher = alert when approaching.</div></div>
           <div class="toggle-row"><span class="toggle-label">First test only</span><label class="toggle"><input type="checkbox" id="setting-first-test-only"><span class="toggle-slider"></span></label></div>
         </div>
         <div class="settings-card">
@@ -91,7 +90,7 @@
           <div style="display:flex;gap:5px;margin-bottom:8px;"><input type="text" id="watchlist-add-input" placeholder="Add symbol" style="flex:1;" onkeydown="if(event.key==='Enter')addSymbol()"><button class="btn btn-primary" onclick="addSymbol()">+</button></div>
           <div style="margin-bottom:8px;"><a onclick="toggleBulkPaste()" style="font-size:10px;color:var(--olive-bright);cursor:pointer;">Bulk paste</a><div id="bulk-paste-area" style="display:none;margin-top:5px;"><textarea id="watchlist-bulk" placeholder="Paste symbols" style="min-height:50px;"></textarea><div class="btn-row" style="margin-top:4px;"><button class="btn btn-secondary" onclick="addBulkSymbols()">Add All</button></div></div></div>
           <div style="margin-bottom:5px;"><input type="text" id="watchlist-search" placeholder="Search..." oninput="renderWatchlistManager()" style="font-size:10px;"></div>
-          <div style="font-size:9px;color:var(--text-4);margin-bottom:4px;"><span id="watchlist-count">0</span> symbols</div>
+          <div style="font-size:9px;color:var(--text-4);margin-bottom:4px;"><span id="watchlist-count">0</span> symbols (sorted A-Z)</div>
           <div id="watchlist-symbols" class="watchlist-symbols"></div>
           <div class="btn-row"><button class="btn btn-primary" onclick="saveWatchlist()">Save & Reinitialize</button><button class="btn btn-secondary" onclick="clearWatchlist()">Clear</button></div>
         </div>
@@ -99,17 +98,65 @@
     </div>
     <div id="tab-setup" class="tab-content">
       <div class="setup-container">
-        <div class="setup-step"><span class="step-number">1</span><h3 class="step-title">Alpaca Account</h3><div class="step-body">Sign up free at <a href="https://alpaca.markets" target="_blank">alpaca.markets</a></div></div>
-        <div class="setup-step"><span class="step-number">2</span><h3 class="step-title">API Keys</h3><div class="step-body">Dashboard → <strong>Generate API Keys</strong>. Copy both.</div></div>
-        <div class="setup-step"><span class="step-number">3</span><h3 class="step-title">Enter Keys</h3><div class="step-body">Private to your account.</div>
-          <div class="setup-keys-form">
-            <div class="form-group"><label class="form-label">API Key</label><input type="text" id="setup-api-key" placeholder="PK..."></div>
-            <div class="form-group"><label class="form-label">Secret</label><input type="password" id="setup-secret-key" placeholder="Secret"></div>
-            <div class="form-group"><label class="form-label">URL</label><select id="setup-base-url"><option value="https://paper-api.alpaca.markets">Paper</option><option value="https://api.alpaca.markets">Live</option></select></div>
-            <div class="btn-row"><button id="setup-submit-btn" class="btn btn-primary" onclick="submitSetup()">Validate & Save</button></div>
+        <div class="setup-step"><span class="step-number">1</span><h3 class="step-title">Create a Free Alpaca Account</h3>
+          <div class="step-body">
+            <strong>Alpaca</strong> is a free stock market data provider. You'll need an account to power the scanner's real-time data.
+            <br><br>1. Go to <a href="https://alpaca.markets" target="_blank">alpaca.markets</a>
+            <br>2. Click <strong>"Sign Up"</strong> and create an account
+            <br>3. Choose <strong>"Paper Trading"</strong> (free, no real money needed)
+            <br>4. Complete the sign-up process and verify your email
           </div>
         </div>
-        <div class="setup-step"><span class="step-number">4</span><h3 class="step-title">Watchlist</h3><div class="step-body">Go to <strong>Settings</strong> → add symbols.</div></div>
+        <div class="setup-step"><span class="step-number">2</span><h3 class="step-title">Generate Your API Keys</h3>
+          <div class="step-body">
+            API keys let the scanner access market data through your Alpaca account.
+            <br><br>1. Log in to your Alpaca dashboard
+            <br>2. On the left sidebar, click <strong>"Paper Trading"</strong>
+            <br>3. Find the <strong>"API Keys"</strong> section and click <strong>"Generate"</strong> (or "Regenerate")
+            <br>4. You'll see two values:
+            <br>&nbsp;&nbsp;• <code>API Key ID</code> — starts with "PK"
+            <br>&nbsp;&nbsp;• <code>Secret Key</code> — a long string (only shown once!)
+            <br>5. <strong>Copy both keys</strong> and save them somewhere safe
+            <br><br><em>Important: The Secret Key is only shown once. If you lose it, you'll need to regenerate both keys.</em>
+          </div>
+        </div>
+        <div class="setup-step"><span class="step-number">3</span><h3 class="step-title">Enter Your Keys Below</h3>
+          <div class="step-body">Paste both keys below. They are stored securely under your account only — no one else can see them.</div>
+          <div class="setup-keys-form">
+            <div class="form-group"><label class="form-label">API Key ID</label><input type="text" id="setup-api-key" placeholder="PK..."></div>
+            <div class="form-group"><label class="form-label">Secret Key</label><input type="password" id="setup-secret-key" placeholder="Paste your secret key here"></div>
+            <div class="form-group"><label class="form-label">Account Type</label><select id="setup-base-url"><option value="https://paper-api.alpaca.markets">Paper Trading (recommended)</option><option value="https://api.alpaca.markets">Live Trading</option></select><div class="form-hint">Paper Trading is free and provides the same market data as live.</div></div>
+            <div class="btn-row"><button id="setup-submit-btn" class="btn btn-primary" onclick="submitSetup()">Validate & Save Keys</button></div>
+          </div>
+        </div>
+        <div class="setup-step"><span class="step-number">4</span><h3 class="step-title">Build Your Watchlist</h3>
+          <div class="step-body">
+            After your keys are validated, go to the <strong>Settings</strong> tab to add the stock symbols you want to scan.
+            <br><br>• Type a symbol and press Enter, or paste a list of symbols
+            <br>• The scanner will fetch historical data and calculate all gap zones for each symbol
+            <br>• This may take a minute for large watchlists (50+ symbols)
+          </div>
+        </div>
+        <div class="setup-step"><span class="step-number">5</span><h3 class="step-title">Configure Your Alerts</h3>
+          <div class="step-body">
+            In the <strong>Settings</strong> tab, you can adjust:
+            <br><br>• <strong>Zone Proximity</strong> — Set to 0% to only alert when price enters a gap zone, or increase to get early warnings when price approaches
+            <br>• <strong>Refresh Interval</strong> — How often the scanner checks prices (15 seconds to 5 minutes)
+            <br>• <strong>Moving Averages</strong> — Customize colors and choose SMA or EMA for each period
+          </div>
+        </div>
+        <div class="setup-step"><span class="step-number">6</span><h3 class="step-title">Understanding the Scanner</h3>
+          <div class="step-body">
+            The scanner monitors your watchlist and alerts you when price enters gap zones:
+            <br><br><strong style="color:var(--support);">Support Gaps (Green)</strong> — Price pulling back into a gap-up zone. Potential bounce area.
+            <br><strong style="color:var(--resistance);">Resistance Gaps (Red)</strong> — Price pushing up into a gap-down zone. Potential reversal area.
+            <br><strong style="color:var(--untested);">Untested Gaps (Yellow)</strong> — New gaps that haven't been tested yet.
+            <br><br>• Click any alert card to open a full chart with moving averages and zone overlays
+            <br>• The alert feed sidebar shows alerts chronologically as they fire throughout the day
+            <br>• Alerts reset automatically before each new trading day (9:30 AM ET)
+            <br>• Each zone only triggers one alert per day — no spam
+          </div>
+        </div>
       </div>
     </div>
   </main>

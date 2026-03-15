@@ -182,30 +182,61 @@ async def run_user_scan_cycle(username: str):
         return
 
     sensitivity = cfg.get("alert_sensitivity", {})
-    support_prox = sensitivity.get("support_proximity_pct", 0.0)
-    resistance_prox = sensitivity.get("resistance_proximity_pct", 0.0)
+    proximity_pct = sensitivity.get("proximity_pct", 0.0)
     first_test_only = sensitivity.get("alert_on_first_test_only", False)
+
+    # Track which zones already fired today (one alert per zone per day)
+    if "fired_today" not in state:
+        state["fired_today"] = set()
 
     try:
         prices = await fetcher.fetch_latest_prices(watchlist)
         state["latest_prices"] = prices
         all_alerts = {"support": [], "resistance": [], "untested": []}
 
+        # Track per-symbol same-side zone count for multi-zone badge
+        symbol_side_counts = {}  # symbol -> {'support': count, 'resistance': count}
+
         for symbol in watchlist:
             price = prices.get(symbol)
             zones = state["zones"].get(symbol, [])
             if price is None or not zones:
                 continue
-            alerts = check_zone_alerts(zones, price, support_prox, resistance_prox, first_test_only)
+            alerts = check_zone_alerts(zones, price, proximity_pct, proximity_pct, first_test_only)
             for alert in alerts:
-                if alert.alert_type == "support_entry":
-                    all_alerts["support"].append(alert.to_dict())
-                elif alert.alert_type == "resistance_entry":
-                    all_alerts["resistance"].append(alert.to_dict())
-                elif alert.alert_type == "untested_approach":
-                    all_alerts["untested"].append(alert.to_dict())
+                # Dedup: one alert per zone per day
+                zone_key = f"{alert.symbol}_{alert.zone.id}"
+                if zone_key in state["fired_today"]:
+                    # Still include in display (it already fired today) but don't count as new
+                    alert_dict = alert.to_dict()
+                    alert_dict["already_fired"] = True
+                else:
+                    state["fired_today"].add(zone_key)
+                    alert_dict = alert.to_dict()
+                    alert_dict["already_fired"] = False
 
+                # Count same-side triggers per symbol
+                base = alert.zone.base_type
+                if symbol not in symbol_side_counts:
+                    symbol_side_counts[symbol] = {"support": 0, "resistance": 0}
+                symbol_side_counts[symbol][base] = symbol_side_counts[symbol].get(base, 0) + 1
+
+                if alert.alert_type == "support_entry":
+                    all_alerts["support"].append(alert_dict)
+                elif alert.alert_type == "resistance_entry":
+                    all_alerts["resistance"].append(alert_dict)
+                elif alert.alert_type == "untested_approach":
+                    all_alerts["untested"].append(alert_dict)
+
+        # Add multi-zone badge info to alerts
         for key in all_alerts:
+            for a in all_alerts[key]:
+                sym = a["symbol"]
+                base = a["zone"]["base_type"]
+                count = symbol_side_counts.get(sym, {}).get(base, 0)
+                a["multi_zone"] = count > 1
+                a["same_side_count"] = count
+
             all_alerts[key].sort(key=lambda a: a["penetration_pct"], reverse=True)
 
         state["alerts"] = all_alerts
@@ -213,7 +244,6 @@ async def run_user_scan_cycle(username: str):
         state["status"].alert_count = sum(len(v) for v in all_alerts.values())
         state["status"].zone_count = sum(len(z) for z in state["zones"].values())
 
-        # Persist alerts to disk so they survive restarts
         _save_alerts(user_dir, all_alerts)
 
     except Exception as e:
@@ -389,6 +419,7 @@ async def user_scan_loop(username: str):
             _save_alert_backup(user_dir, state["alerts"])
             state["alerts"] = {"support": [], "resistance": [], "untested": []}
             state["status"].alert_count = 0
+            state["fired_today"] = set()  # Reset dedup tracking
             _save_alerts(user_dir, state["alerts"])
             last_reset_date = today
             logger.info(f"[{username}] Daily reset: alerts cleared for new trading day.")
@@ -789,16 +820,15 @@ async def get_chart_data(symbol: str, request: Request):
         raise HTTPException(status_code=400, detail="Scanner not initialized")
 
     # Fetch bars — extra history so MAs have data from the start
-    # For daily: 5+ years. For intraday: as much as Alpaca allows.
-    lookback_map = {"1Week": 2500, "1Day": 1500, "4Hour": 180, "1Hour": 60, "30Min": 30, "15Min": 20, "5Min": 10, "1Min": 5}
+    lookback_map = {"1Week": 2500, "1Day": 1500, "4Hour": 365, "1Hour": 120, "30Min": 60, "15Min": 30, "5Min": 14, "1Min": 7}
     lookback = lookback_map.get(tf, 1500)
 
     bars = await fetcher.fetch_bars(symbol, tf, lookback)
 
     if tf in ("1Day", "1Week"):
-        bar_data = [{"date": b.bar_date.isoformat(), "open": b.open, "high": b.high, "low": b.low, "close": b.close} for b in bars]
+        bar_data = [{"date": b.bar_date.isoformat(), "open": b.open, "high": b.high, "low": b.low, "close": b.close, "vol": b.volume} for b in bars]
     else:
-        bar_data = [{"date": int(b.bar_date.timestamp()), "open": b.open, "high": b.high, "low": b.low, "close": b.close} for b in bars]
+        bar_data = [{"date": int(b.bar_date.timestamp()), "open": b.open, "high": b.high, "low": b.low, "close": b.close, "vol": b.volume} for b in bars]
 
     zones = state["zones"].get(symbol, [])
     zone_data = [z.to_dict() for z in zones]
