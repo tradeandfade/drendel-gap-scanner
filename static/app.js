@@ -125,7 +125,7 @@ async function openChart(sym,tf){
       legend.innerHTML='<span style="color:#888">O</span> <span style="color:'+clr+'">'+bar.open.toFixed(2)+'</span> <span style="color:#888">H</span> <span style="color:'+clr+'">'+bar.high.toFixed(2)+'</span> <span style="color:#888">L</span> <span style="color:'+clr+'">'+bar.low.toFixed(2)+'</span> <span style="color:#888">C</span> <span style="color:'+clr+'">'+bar.close.toFixed(2)+'</span> <span style="color:#888">V</span> <span style="color:#666">'+volStr+'</span>';
     });
 
-    // === ZONE OVERLAYS ===
+    // === ZONE OVERLAYS (on main price scale so they align with candles) ===
     if(d.zones&&d.zones.length>0&&bars.length>0){
       for(var zi=0;zi<d.zones.length;zi++){
         var z=d.zones[zi];
@@ -140,8 +140,8 @@ async function openChart(sym,tf){
         if(pts.length<2)continue;
 
         try{
+          // Baseline series on DEFAULT scale — fills between zone_top line and zone_bottom baseline
           var bs=chart.addBaselineSeries({
-            priceScaleId:'zones_overlay',
             baseValue:{type:'price',price:z.zone_bottom},
             topLineColor:lineClr,
             bottomLineColor:lineClr,
@@ -155,17 +155,17 @@ async function openChart(sym,tf){
             crosshairMarkerVisible:false,
           });
           bs.setData(pts.map(function(p){return{time:p.time,value:z.zone_top}}));
-          // Also draw bottom border line
-          var btmLine=chart.addLineSeries({priceScaleId:'zones_overlay',color:lineClr,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+          // Bottom border line on default scale
+          var btmLine=chart.addLineSeries({color:lineClr,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
           btmLine.setData(pts.map(function(p){return{time:p.time,value:z.zone_bottom}}));
         }catch(e){
-          var tl=chart.addLineSeries({priceScaleId:'zones_overlay',color:lineClr,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+          // Fallback: just two lines on default scale
+          var tl=chart.addLineSeries({color:lineClr,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
           tl.setData(pts.map(function(p){return{time:p.time,value:z.zone_top}}));
-          var bl=chart.addLineSeries({priceScaleId:'zones_overlay',color:lineClr,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+          var bl=chart.addLineSeries({color:lineClr,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
           bl.setData(pts.map(function(p){return{time:p.time,value:z.zone_bottom}}));
         }
       }
-      try{chart.priceScale('zones_overlay').applyOptions({scaleMargins:{top:0,bottom:0},visible:false,autoScale:false})}catch(e){}
     }
 
     // === MOVING AVERAGES ===
