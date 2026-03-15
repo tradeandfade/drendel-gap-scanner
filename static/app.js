@@ -57,59 +57,94 @@ async function openChart(sym,tf){
     var w=c.offsetWidth,h=c.offsetHeight;
     var isIntra=['1Min','5Min','15Min','30Min','1Hour','4Hour'].indexOf(tf)>=0;
 
-    var chart=LightweightCharts.createChart(c,{
-      width:w,height:h,
+    // Split height: 75% price, 25% volume
+    var priceH=Math.floor(h*0.78);
+    var volH=h-priceH;
+
+    // Create price chart container and volume chart container
+    var priceDiv=document.createElement('div');priceDiv.style.cssText='width:100%;height:'+priceH+'px;position:relative;';
+    var volDiv=document.createElement('div');volDiv.style.cssText='width:100%;height:'+volH+'px;border-top:1px solid #1e1e1e;';
+    c.appendChild(priceDiv);c.appendChild(volDiv);
+
+    // OHLCV legend overlay
+    var legend=document.createElement('div');
+    legend.id='chart-legend';
+    legend.style.cssText='position:absolute;top:4px;left:8px;z-index:10;font-family:DM Mono,monospace;font-size:10px;color:#888;pointer-events:none;';
+    priceDiv.appendChild(legend);
+
+    // === PRICE CHART ===
+    var chart=LightweightCharts.createChart(priceDiv,{
+      width:w,height:priceH,
       layout:{background:{type:'solid',color:'#0a0a0a'},textColor:'#555'},
       grid:{vertLines:{color:'#141414'},horzLines:{color:'#141414'}},
       crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
       timeScale:{borderColor:'#1a1a1a',timeVisible:isIntra,secondsVisible:false},
-      rightPriceScale:{borderColor:'#1a1a1a',scaleMargins:{top:0.02,bottom:0.12}},
+      rightPriceScale:{borderColor:'#1a1a1a',scaleMargins:{top:0.05,bottom:0.05}},
     });
     state.chart=chart;
 
-    // === CANDLESTICKS ===
     var cs=chart.addCandlestickSeries({
       upColor:'#5a9a4c',downColor:'#b45040',
       borderUpColor:'#5a9a4c',borderDownColor:'#b45040',
-      wickUpColor:'#5a9a4c',wickDownColor:'#b45040',
+      wickUpColor:'#cccccc',wickDownColor:'#cccccc',
     });
     var bars=d.bars.map(function(b){return{time:b.date,open:b.open,high:b.high,low:b.low,close:b.close}});
     cs.setData(bars);
 
-    // === VOLUME ===
-    var volSeries=chart.addHistogramSeries({
-      priceFormat:{type:'volume'},
-      priceScaleId:'volume_scale',
+    // === VOLUME CHART (separate pane) ===
+    var volChart=LightweightCharts.createChart(volDiv,{
+      width:w,height:volH,
+      layout:{background:{type:'solid',color:'#0a0a0a'},textColor:'#444'},
+      grid:{vertLines:{color:'#141414'},horzLines:{color:'#141414'}},
+      crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+      timeScale:{visible:false},
+      rightPriceScale:{borderColor:'#1a1a1a'},
     });
-    chart.priceScale('volume_scale').applyOptions({
-      scaleMargins:{top:0.85,bottom:0},
-    });
+    state.volChart=volChart;
+    var volSeries=volChart.addHistogramSeries({priceFormat:{type:'volume'}});
     volSeries.setData(d.bars.map(function(b){
-      return{time:b.date,value:b.vol||0,color:b.close>=b.open?'rgba(90,154,76,0.25)':'rgba(180,80,64,0.25)'}
+      return{time:b.date,value:b.vol||0,color:b.close>=b.open?'rgba(90,154,76,0.4)':'rgba(180,80,64,0.4)'}
     }));
 
-    // === ZONE OVERLAYS (overlay mode — no Y-axis impact) ===
+    // Sync time scales
+    chart.timeScale().subscribeVisibleLogicalRangeChange(function(range){
+      if(range)try{volChart.timeScale().setVisibleLogicalRange(range)}catch(e){}
+    });
+    volChart.timeScale().subscribeVisibleLogicalRangeChange(function(range){
+      if(range)try{chart.timeScale().setVisibleLogicalRange(range)}catch(e){}
+    });
+
+    // === OHLCV CROSSHAIR LEGEND ===
+    chart.subscribeCrosshairMove(function(param){
+      if(!param||!param.time){legend.innerHTML='';return}
+      var bar=null;
+      for(var bi=0;bi<d.bars.length;bi++){if(d.bars[bi].date===param.time||d.bars[bi].date==param.time){bar=d.bars[bi];break}}
+      if(!bar){legend.innerHTML='';return}
+      var clr=bar.close>=bar.open?'#5a9a4c':'#b45040';
+      var vol=bar.vol||0;var volStr=vol>=1e6?(vol/1e6).toFixed(1)+'M':vol>=1e3?(vol/1e3).toFixed(0)+'K':vol.toString();
+      legend.innerHTML='<span style="color:#888">O</span> <span style="color:'+clr+'">'+bar.open.toFixed(2)+'</span> <span style="color:#888">H</span> <span style="color:'+clr+'">'+bar.high.toFixed(2)+'</span> <span style="color:#888">L</span> <span style="color:'+clr+'">'+bar.low.toFixed(2)+'</span> <span style="color:#888">C</span> <span style="color:'+clr+'">'+bar.close.toFixed(2)+'</span> <span style="color:#888">V</span> <span style="color:#666">'+volStr+'</span>';
+    });
+
+    // === ZONE OVERLAYS ===
     if(d.zones&&d.zones.length>0&&bars.length>0){
       for(var zi=0;zi<d.zones.length;zi++){
         var z=d.zones[zi];
         var lineClr,fillClr;
-        if(z.is_untested){lineClr='rgba(200,180,50,0.7)';fillClr='rgba(200,180,50,0.06)'}
-        else if(z.base_type==='support'){lineClr='rgba(90,170,76,0.7)';fillClr='rgba(90,170,76,0.06)'}
-        else{lineClr='rgba(200,80,64,0.7)';fillClr='rgba(200,80,64,0.06)'}
+        if(z.is_untested){lineClr='rgba(230,160,40,0.9)';fillClr='rgba(230,160,40,0.15)'}
+        else if(z.base_type==='support'){lineClr='rgba(80,180,60,0.9)';fillClr='rgba(80,180,60,0.15)'}
+        else{lineClr='rgba(210,60,50,0.9)';fillClr='rgba(210,60,50,0.15)'}
 
-        // Find start index
         var si=0;
         for(var i=0;i<bars.length;i++){if(bars[i].time>=z.created_date){si=i;break}}
         var pts=bars.slice(si);
         if(pts.length<2)continue;
 
-        // Baseline series in OVERLAY mode
         try{
           var bs=chart.addBaselineSeries({
-            priceScaleId:'zones_overlay',  // separate scale, not main
+            priceScaleId:'zones_overlay',
             baseValue:{type:'price',price:z.zone_bottom},
             topLineColor:lineClr,
-            bottomLineColor:'transparent',
+            bottomLineColor:lineClr,
             topFillColor1:fillClr,
             topFillColor2:fillClr,
             bottomFillColor1:'transparent',
@@ -120,22 +155,17 @@ async function openChart(sym,tf){
             crosshairMarkerVisible:false,
           });
           bs.setData(pts.map(function(p){return{time:p.time,value:z.zone_top}}));
+          // Also draw bottom border line
+          var btmLine=chart.addLineSeries({priceScaleId:'zones_overlay',color:lineClr,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+          btmLine.setData(pts.map(function(p){return{time:p.time,value:z.zone_bottom}}));
         }catch(e){
-          // Fallback: overlay lines
-          var tl=chart.addLineSeries({priceScaleId:'zones_overlay',color:lineClr,lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+          var tl=chart.addLineSeries({priceScaleId:'zones_overlay',color:lineClr,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
           tl.setData(pts.map(function(p){return{time:p.time,value:z.zone_top}}));
-          var bl=chart.addLineSeries({priceScaleId:'zones_overlay',color:lineClr,lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+          var bl=chart.addLineSeries({priceScaleId:'zones_overlay',color:lineClr,lineWidth:1,lineStyle:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
           bl.setData(pts.map(function(p){return{time:p.time,value:z.zone_bottom}}));
         }
       }
-      // Make the zone overlay scale invisible and non-interactive
-      try{
-        chart.priceScale('zones_overlay').applyOptions({
-          scaleMargins:{top:0,bottom:0},
-          visible:false,
-          autoScale:false,
-        });
-      }catch(e){}
+      try{chart.priceScale('zones_overlay').applyOptions({scaleMargins:{top:0,bottom:0},visible:false,autoScale:false})}catch(e){}
     }
 
     // === MOVING AVERAGES ===
@@ -173,7 +203,7 @@ async function openChart(sym,tf){
   }
 }
 
-function closeChart(){document.getElementById('chart-modal').style.display='none';if(state.chart){try{state.chart.remove()}catch(e){}state.chart=null}}
+function closeChart(){document.getElementById('chart-modal').style.display='none';if(state.chart){try{state.chart.remove()}catch(e){}state.chart=null}if(state.volChart){try{state.volChart.remove()}catch(e){}state.volChart=null}}
 
 function calcSMA(d,p){var r=[];for(var i=0;i<d.length;i++){if(i<p-1){r.push(null);continue}var s=0;for(var j=i-p+1;j<=i;j++)s+=d[j];r.push(Math.round((s/p)*100)/100)}return r}
 function calcEMA(d,p){var k=2/(p+1),r=[],e=null;for(var i=0;i<d.length;i++){if(i<p-1){r.push(null);continue}if(e===null){var s=0;for(var j=i-p+1;j<=i;j++)s+=d[j];e=s/p}else{e=d[i]*k+e*(1-k)}r.push(Math.round(e*100)/100)}return r}

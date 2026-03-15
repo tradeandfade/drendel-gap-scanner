@@ -38,16 +38,17 @@ def build_gap_zones(daily_bars: list[BarData], max_gaps: int = 50) -> list[GapZo
         prev_bar = daily_bars[i - 1]
         curr_bar = daily_bars[i]
 
-        # --- Step 1: Check for new gaps ---
+        # --- Step 1: Update existing zones with today's bar ---
+        # (do this BEFORE detecting new gaps so new gaps aren't tested on their creation day)
+        zones = _update_zones_with_bar(zones, curr_bar)
+
+        # --- Step 2: Check for new gaps ---
         new_zone = _detect_gap(symbol, prev_bar, curr_bar)
         if new_zone:
             zones.append(new_zone)
             # Enforce max gaps limit
             if len(zones) > max_gaps:
                 zones = zones[-max_gaps:]
-
-        # --- Step 2: Update existing zones with today's price action ---
-        zones = _update_zones_with_bar(zones, curr_bar)
 
     logger.info(f"{symbol}: Built {len(zones)} active gap zones from {len(daily_bars)} bars")
     return zones
