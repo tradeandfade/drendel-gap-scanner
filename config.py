@@ -9,6 +9,8 @@ DEFAULT_CONFIG = {
     "alpaca_base_url": "https://paper-api.alpaca.markets",
     "polygon_api_key": "",
     "fmp_api_key": "",
+    "scanner_provider": "alpaca",   # alpaca, polygon, fmp
+    "chart_provider": "alpaca",     # alpaca, polygon, fmp
     "scan_interval_seconds": 300,
     "lookback_days": 252,
     "max_gaps_per_symbol": 50,

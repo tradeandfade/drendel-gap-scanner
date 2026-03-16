@@ -17,12 +17,29 @@ from fastapi.staticfiles import StaticFiles
 import auth
 import config
 from data_fetcher import AlpacaFetcher
+from polygon_fetcher import PolygonFetcher
+from fmp_fetcher import FMPFetcher
 from gap_engine import build_gap_zones, check_zone_alerts, update_zones_eod
 from models import ScannerStatus
 from utils import setup_logging, is_market_open, now_et
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+
+def _create_fetcher(provider: str, cfg: dict):
+    """Create the appropriate fetcher based on provider selection."""
+    if provider == "polygon" and cfg.get("polygon_api_key"):
+        return PolygonFetcher(cfg["polygon_api_key"])
+    elif provider == "fmp" and cfg.get("fmp_api_key"):
+        return FMPFetcher(cfg["fmp_api_key"])
+    else:
+        # Default to Alpaca
+        return AlpacaFetcher(
+            api_key=cfg.get("alpaca_api_key", ""),
+            secret_key=cfg.get("alpaca_secret_key", ""),
+            base_url=cfg.get("alpaca_base_url", "https://paper-api.alpaca.markets"),
+        )
 
 # ---------------------------------------------------------------------------
 # Per-user scanner state: username -> state dict
@@ -69,25 +86,52 @@ async def initialize_user_scanner(username: str):
     cfg = config.load_config(user_dir)
     state = get_user_state(username)
 
+    # Check that at least Alpaca keys exist (required as baseline)
     if not cfg.get("alpaca_api_key") or not cfg.get("alpaca_secret_key"):
         state["status"].error = "API keys not configured. Complete setup first."
         state["status"].initialized = False
         return
 
-    fetcher = AlpacaFetcher(
-        api_key=cfg["alpaca_api_key"],
-        secret_key=cfg["alpaca_secret_key"],
-        base_url=cfg.get("alpaca_base_url", "https://paper-api.alpaca.markets"),
-    )
+    # Create scanner fetcher based on provider selection
+    scanner_provider = cfg.get("scanner_provider", "alpaca")
+    fetcher = _create_fetcher(scanner_provider, cfg)
 
     valid, msg = await fetcher.validate_keys()
     if not valid:
-        state["status"].error = msg
-        state["status"].initialized = False
-        await fetcher.close()
-        return
+        # Fall back to Alpaca if selected provider fails
+        if scanner_provider != "alpaca":
+            logger.warning(f"[{username}] {scanner_provider} validation failed: {msg}. Falling back to Alpaca.")
+            fetcher = _create_fetcher("alpaca", cfg)
+            valid, msg = await fetcher.validate_keys()
+            if not valid:
+                state["status"].error = msg
+                state["status"].initialized = False
+                await fetcher.close()
+                return
+        else:
+            state["status"].error = msg
+            state["status"].initialized = False
+            await fetcher.close()
+            return
 
     state["fetcher"] = fetcher
+
+    # Create chart fetcher (may be different provider)
+    chart_provider = cfg.get("chart_provider", "alpaca")
+    if chart_provider != scanner_provider:
+        chart_fetcher = _create_fetcher(chart_provider, cfg)
+        # Validate chart fetcher silently
+        cv, cm = await chart_fetcher.validate_keys()
+        if cv:
+            state["chart_fetcher"] = chart_fetcher
+            logger.info(f"[{username}] Chart provider: {chart_provider}")
+        else:
+            logger.warning(f"[{username}] Chart provider {chart_provider} failed, using scanner provider")
+            state["chart_fetcher"] = fetcher
+    else:
+        state["chart_fetcher"] = fetcher
+
+    logger.info(f"[{username}] Scanner provider: {scanner_provider}")
     watchlist = cfg.get("watchlist", [])
 
     if not watchlist:
@@ -888,7 +932,8 @@ async def get_chart_data(symbol: str, request: Request):
     state = get_user_state(username)
     user_dir = auth.get_user_data_dir(username)
     cfg = config.load_config(user_dir)
-    fetcher = state.get("fetcher")
+    # Use chart_fetcher if available (may be a different provider than scanner)
+    chart_fetcher = state.get("chart_fetcher") or state.get("fetcher")
 
     symbol = symbol.upper()
     tf = request.query_params.get("tf", "1Day")
@@ -896,14 +941,14 @@ async def get_chart_data(symbol: str, request: Request):
     if tf not in valid_tfs:
         tf = "1Day"
 
-    if not fetcher:
+    if not chart_fetcher:
         raise HTTPException(status_code=400, detail="Scanner not initialized")
 
     # Fetch bars — extra history so MAs have data from the start
     lookback_map = {"1Week": 2500, "1Day": 1500, "4Hour": 365, "1Hour": 120, "30Min": 60, "15Min": 30, "5Min": 14, "1Min": 7}
     lookback = lookback_map.get(tf, 1500)
 
-    bars = await fetcher.fetch_bars(symbol, tf, lookback)
+    bars = await chart_fetcher.fetch_bars(symbol, tf, lookback)
 
     if tf in ("1Day", "1Week"):
         bar_data = [{"date": b.bar_date.isoformat(), "open": b.open, "high": b.high, "low": b.low, "close": b.close, "vol": b.volume} for b in bars]

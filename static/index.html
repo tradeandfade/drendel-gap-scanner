@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Drendel Gap Scanner</title>
-  <link rel="stylesheet" href="/static/style.css?v=14">
+  <link rel="stylesheet" href="/static/style.css?v=15">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23080808'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%237c9a5e'>G</text></svg>">
 </head>
 <body>
@@ -40,6 +40,12 @@
             <div class="ma-row"><span class="ma-label">50</span><select id="setting-ma50-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma50-color" value="#a855f7" class="ma-color-input"></div>
             <div class="ma-row"><span class="ma-label">200</span><select id="setting-ma200-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma200-color" value="#ef4444" class="ma-color-input"></div>
             <div class="btn-row"><button class="btn btn-primary" onclick="saveSettings()">Save Settings</button></div>
+          </div>
+          <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border-1);">
+            <div class="settings-card-title" style="margin-bottom:6px;">Data Providers</div>
+            <div class="form-group"><label class="form-label">Scanner / Zone Builder</label><select id="setting-scanner-provider"><option value="alpaca">Alpaca (default)</option></select><div class="form-hint-visible">Used for live price scanning and gap zone detection.</div></div>
+            <div class="form-group"><label class="form-label">Chart Data</label><select id="setting-chart-provider"><option value="alpaca">Alpaca (default)</option></select><div class="form-hint-visible">Used for loading chart candlesticks on all timeframes.</div></div>
+            <div class="btn-row"><button class="btn btn-primary" onclick="saveProviders()">Save Providers</button></div>
           </div>
           <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border-1);">
             <div style="font-size:10px;color:var(--text-4);margin-bottom:3px;">Alpaca API Key</div>
@@ -94,6 +100,6 @@
     </div>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=14"></script>
+  <script src="/static/app.js?v=15"></script>
 </body>
 </html>

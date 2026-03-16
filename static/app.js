@@ -51,6 +51,8 @@ function renderSettings(){var s=state.settings;sv('setting-interval',s.scan_inte
 var akd=document.getElementById('api-key-display');if(akd){akd.textContent=s.alpaca_api_key_display||'Not configured';akd.style.color=s.alpaca_api_key_display?'var(--olive-bright)':'var(--text-4)'}
 var pkd=document.getElementById('polygon-key-display');if(pkd){pkd.textContent=s.polygon_api_key_display||'Not configured';pkd.style.color=s.polygon_api_key_display?'var(--olive-bright)':'var(--text-4)'}
 var fkd=document.getElementById('fmp-key-display');if(fkd){fkd.textContent=s.fmp_api_key_display||'Not configured';fkd.style.color=s.fmp_api_key_display?'var(--olive-bright)':'var(--text-4)'}
+// Populate provider dropdowns based on available keys
+populateProviderDropdowns(s);
 state.filters=s.alert_filters||[];renderFilters();loadWatchlist()}
 function sv(id,v){var e=document.getElementById(id);if(e&&v!==undefined)e.value=v}
 
@@ -88,3 +90,22 @@ function dismissConfirm(){var e=document.getElementById('confirm-clear');if(e)e.
 async function doClear(){dismissConfirm();try{var r=await fetch('/api/alerts/clear',{method:'POST'});var d=await r.json();if(d.ok){state.alerts={support:[],resistance:[],untested:[]};state.alertFeed=[];state.previousAlertKeys=new Set();renderAlerts();renderFeed();updateAlertCounts();var ub=document.getElementById('undo-bar');if(ub){ub.querySelector('span').textContent='Alerts cleared.';ub.style.display='flex';setTimeout(function(){dismissUndo()},15000)}}}catch(e){showToast('Error.','error')}}
 async function undoClearAlerts(){dismissUndo();try{var r=await fetch('/api/alerts/restore',{method:'POST'});var d=await r.json();if(d.ok){showToast('Restored.','success');await loadAlerts()}else showToast('No backup.','error')}catch(e){showToast('Error.','error')}}
 function dismissUndo(){var e=document.getElementById('undo-bar');if(e)e.style.display='none';wlBackup=null}
+
+/* ===== DATA PROVIDER SELECTION ===== */
+function populateProviderDropdowns(s){
+  var providers=[{value:'alpaca',label:'Alpaca (default)'}];
+  if(s.polygon_api_key_display)providers.push({value:'polygon',label:'Polygon.io'});
+  if(s.fmp_api_key_display)providers.push({value:'fmp',label:'FMP'});
+  var scanSel=document.getElementById('setting-scanner-provider');
+  var chartSel=document.getElementById('setting-chart-provider');
+  if(scanSel){scanSel.innerHTML=providers.map(function(p){return'<option value="'+p.value+'"'+(p.value===(s.scanner_provider||'alpaca')?' selected':'')+'>'+p.label+'</option>'}).join('')}
+  if(chartSel){chartSel.innerHTML=providers.map(function(p){return'<option value="'+p.value+'"'+(p.value===(s.chart_provider||'alpaca')?' selected':'')+'>'+p.label+'</option>'}).join('')}
+}
+async function saveProviders(){
+  var sp=document.getElementById('setting-scanner-provider');
+  var cp=document.getElementById('setting-chart-provider');
+  var body={};
+  if(sp)body.scanner_provider=sp.value;
+  if(cp)body.chart_provider=cp.value;
+  try{var r=await fetch(API.settings,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var d=await r.json();if(d.ok){showToast('Providers saved. Reinitializing...','success');await fetch(API.reinit,{method:'POST'});await loadSettings();await loadStatus()}else showToast('Failed.','error')}catch(e){showToast('Error.','error')}
+}
