@@ -7,13 +7,15 @@ DEFAULT_CONFIG = {
     "alpaca_api_key": "",
     "alpaca_secret_key": "",
     "alpaca_base_url": "https://paper-api.alpaca.markets",
+    "polygon_api_key": "",
+    "fmp_api_key": "",
     "scan_interval_seconds": 300,
     "lookback_days": 252,
     "max_gaps_per_symbol": 50,
     "alert_sensitivity": {
         "proximity_pct": 0.0,
-        "alert_on_first_test_only": False,
     },
+    "alert_filters": [],
     "display": {
         "show_untested": True,
         "show_age": True,

@@ -130,6 +130,8 @@ async def initialize_user_scanner(username: str):
         return
 
     # No cache — build from scratch
+    if "daily_closes" not in state:
+        state["daily_closes"] = {}
     for symbol in watchlist:
         try:
             bars = await fetcher.fetch_daily_bars(symbol, lookback)
@@ -137,6 +139,7 @@ async def initialize_user_scanner(username: str):
                 zones = build_gap_zones(bars, max_gaps)
                 state["zones"][symbol] = zones
                 state["prev_closes"][symbol] = bars[-1].close
+                state["daily_closes"][symbol] = [b.close for b in bars]
             else:
                 state["zones"][symbol] = []
         except Exception as e:
@@ -183,7 +186,9 @@ async def run_user_scan_cycle(username: str):
 
     sensitivity = cfg.get("alert_sensitivity", {})
     proximity_pct = sensitivity.get("proximity_pct", 0.0)
-    first_test_only = sensitivity.get("alert_on_first_test_only", False)
+
+    # Custom alert filters
+    alert_filters = cfg.get("alert_filters", [])
 
     # Track which zones already fired today (one alert per zone per day)
     if "fired_today" not in state:
@@ -193,21 +198,25 @@ async def run_user_scan_cycle(username: str):
         prices = await fetcher.fetch_latest_prices(watchlist)
         state["latest_prices"] = prices
         all_alerts = {"support": [], "resistance": [], "untested": []}
-
-        # Track per-symbol same-side zone count for multi-zone badge
-        symbol_side_counts = {}  # symbol -> {'support': count, 'resistance': count}
+        symbol_side_counts = {}
 
         for symbol in watchlist:
             price = prices.get(symbol)
             zones = state["zones"].get(symbol, [])
             if price is None or not zones:
                 continue
-            alerts = check_zone_alerts(zones, price, proximity_pct, proximity_pct, first_test_only)
+
+            alerts = check_zone_alerts(zones, price, proximity_pct, proximity_pct, False)
+
             for alert in alerts:
-                # Dedup: one alert per zone per day
+                base = alert.zone.base_type
+
+                # Apply custom filters
+                if alert_filters and not _passes_filters(alert_filters, base, symbol, price, state):
+                    continue
+
                 zone_key = f"{alert.symbol}_{alert.zone.id}"
                 if zone_key in state["fired_today"]:
-                    # Still include in display (it already fired today) but don't count as new
                     alert_dict = alert.to_dict()
                     alert_dict["already_fired"] = True
                 else:
@@ -215,8 +224,6 @@ async def run_user_scan_cycle(username: str):
                     alert_dict = alert.to_dict()
                     alert_dict["already_fired"] = False
 
-                # Count same-side triggers per symbol
-                base = alert.zone.base_type
                 if symbol not in symbol_side_counts:
                     symbol_side_counts[symbol] = {"support": 0, "resistance": 0}
                 symbol_side_counts[symbol][base] = symbol_side_counts[symbol].get(base, 0) + 1
@@ -228,7 +235,6 @@ async def run_user_scan_cycle(username: str):
                 elif alert.alert_type == "untested_approach":
                     all_alerts["untested"].append(alert_dict)
 
-        # Add multi-zone badge info to alerts
         for key in all_alerts:
             for a in all_alerts[key]:
                 sym = a["symbol"]
@@ -236,19 +242,65 @@ async def run_user_scan_cycle(username: str):
                 count = symbol_side_counts.get(sym, {}).get(base, 0)
                 a["multi_zone"] = count > 1
                 a["same_side_count"] = count
-
             all_alerts[key].sort(key=lambda a: a["penetration_pct"], reverse=True)
 
         state["alerts"] = all_alerts
         state["status"].last_scan = now_et().strftime("%Y-%m-%d %H:%M:%S ET")
         state["status"].alert_count = sum(len(v) for v in all_alerts.values())
         state["status"].zone_count = sum(len(z) for z in state["zones"].values())
-
         _save_alerts(user_dir, all_alerts)
 
     except Exception as e:
         logger.error(f"[{username}] Scan cycle error: {e}")
         state["status"].error = str(e)
+
+
+def _compute_sma(closes: list, period: int) -> float | None:
+    if len(closes) < period:
+        return None
+    return sum(closes[-period:]) / period
+
+
+def _compute_ema(closes: list, period: int) -> float | None:
+    if len(closes) < period:
+        return None
+    k = 2 / (period + 1)
+    ema = sum(closes[:period]) / period
+    for c in closes[period:]:
+        ema = c * k + ema * (1 - k)
+    return ema
+
+
+def _passes_filters(filters: list, base_type: str, symbol: str, price: float, state: dict) -> bool:
+    """Check if an alert passes all custom filters."""
+    # Get daily closes for this symbol from cached bars
+    daily_closes = state.get("daily_closes", {}).get(symbol)
+    if not daily_closes:
+        return True  # No data to filter on, allow alert
+
+    for f in filters:
+        zone_type = f.get("zone_type", "")  # "support" or "resistance"
+        if zone_type and zone_type != base_type:
+            continue  # This filter doesn't apply to this zone type
+
+        condition = f.get("condition", "")  # "above" or "below"
+        ma_period = f.get("ma_period", 200)
+        ma_type = f.get("ma_type", "sma")
+
+        if ma_type == "ema":
+            ma_val = _compute_ema(daily_closes, ma_period)
+        else:
+            ma_val = _compute_sma(daily_closes, ma_period)
+
+        if ma_val is None:
+            continue  # Not enough data, skip this filter
+
+        if condition == "above" and price <= ma_val:
+            return False  # Filter says price must be above MA, but it's not
+        if condition == "below" and price >= ma_val:
+            return False  # Filter says price must be below MA, but it's not
+
+    return True
 
 
 def _save_alerts(user_dir: Path, alerts: dict):
@@ -353,12 +405,15 @@ async def _rebuild_zones_background(username, fetcher, watchlist, lookback, max_
     logger.info(f"[{username}] Background zone rebuild starting...")
     state = get_user_state(username)
     new_zones = {}
+    if "daily_closes" not in state:
+        state["daily_closes"] = {}
     for symbol in watchlist:
         try:
             bars = await fetcher.fetch_daily_bars(symbol, lookback)
             if len(bars) >= 2:
                 new_zones[symbol] = build_gap_zones(bars, max_gaps)
                 state["prev_closes"][symbol] = bars[-1].close
+                state["daily_closes"][symbol] = [b.close for b in bars]
             else:
                 new_zones[symbol] = []
         except Exception as e:
@@ -747,8 +802,16 @@ async def get_settings(request: Request):
         safe["alpaca_api_key_display"] = key[:4] + "****" + key[-4:] if len(key) > 8 else "****"
     if safe.get("alpaca_secret_key"):
         safe["alpaca_secret_key_display"] = "****hidden****"
+    if safe.get("polygon_api_key"):
+        key = safe["polygon_api_key"]
+        safe["polygon_api_key_display"] = key[:4] + "****" + key[-4:] if len(key) > 8 else "****"
+    if safe.get("fmp_api_key"):
+        key = safe["fmp_api_key"]
+        safe["fmp_api_key_display"] = key[:4] + "****" + key[-4:] if len(key) > 8 else "****"
     safe.pop("alpaca_api_key", None)
     safe.pop("alpaca_secret_key", None)
+    safe.pop("polygon_api_key", None)
+    safe.pop("fmp_api_key", None)
     return JSONResponse(safe)
 
 

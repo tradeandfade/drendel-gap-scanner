@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Drendel Gap Scanner</title>
-  <link rel="stylesheet" href="/static/style.css?v=13">
+  <link rel="stylesheet" href="/static/style.css?v=14">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23080808'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%237c9a5e'>G</text></svg>">
 </head>
 <body>
@@ -13,36 +13,53 @@
   <div id="chart-modal" class="chart-modal" style="display:none;"><div class="chart-modal-backdrop" onclick="closeChart()"></div><div class="chart-modal-content"><div class="chart-header"><span id="chart-symbol" class="chart-symbol"></span><div id="chart-tf-bar" style="display:flex;gap:2px;"></div><button class="chart-close" onclick="closeChart()">✕</button></div><div id="chart-container" class="chart-container"></div></div></div>
   <header class="header"><div class="header-inner"><div class="logo"><div class="logo-icon">G</div><div class="logo-text">DRENDEL <span>SCANNER</span></div></div><div class="header-status"><div class="status-pill"><span id="symbol-count">0</span> sym</div><div class="status-pill"><span id="zone-count">0</span> zones</div><div class="status-pill"><div id="status-dot" class="status-dot"></div><span id="status-text">—</span></div><button class="btn btn-secondary" onclick="forceRefresh()" style="padding:2px 6px;font-size:9px;">↻</button><button class="btn btn-secondary" onclick="doLogout()" style="padding:2px 6px;font-size:9px;">Logout</button><nav class="tab-bar"><button class="tab-btn active" data-tab="scanner">Scanner <span class="tab-count">0</span></button><button class="tab-btn" data-tab="zones">Zones</button><button class="tab-btn" data-tab="settings">Settings</button><button class="tab-btn" data-tab="setup">Setup</button></nav></div></div></header>
   <main class="main">
+    <!-- SCANNER -->
     <div id="tab-scanner" class="tab-content active">
       <div style="display:flex;gap:12px;margin-bottom:8px;font-family:'DM Mono';font-size:9px;color:var(--text-4);"><span>Last scan: <span id="last-scan-time" style="color:var(--text-3)">—</span></span><span>Last zone build: <span id="last-build-time" style="color:var(--text-3)">—</span></span></div>
       <div class="scanner-layout"><div class="alert-sidebar"><div class="sidebar-header"><span class="sidebar-title">Feed</span><span id="feed-count" class="sidebar-count">0</span></div><div id="alert-feed" class="alert-feed"><div class="empty-state"><div class="empty-state-text">No alerts yet.</div></div></div></div><div class="scanner-main"><div class="scanner-toolbar"><button class="btn btn-ghost" onclick="confirmClearAlerts()">Clear</button></div><div id="alerts-support" class="alert-section"></div><div id="alerts-resistance" class="alert-section"></div><div id="alerts-untested" class="alert-section"></div></div></div>
       <div id="undo-bar" class="undo-bar" style="display:none;"><span>Cleared.</span><button class="btn btn-secondary" onclick="undoClearAlerts()" style="padding:2px 8px;font-size:9px;">Undo</button><button class="btn btn-ghost" onclick="dismissUndo()">✕</button></div>
     </div>
+
+    <!-- ZONES -->
     <div id="tab-zones" class="tab-content"><div style="margin-bottom:8px;"><input type="text" id="zone-search" placeholder="Search by ticker..." oninput="renderZoneTable()" style="font-size:10px;max-width:200px;"></div><div id="zone-explorer-content"><div class="loading-overlay"><div class="loading-spinner"></div></div></div></div>
+
+    <!-- SETTINGS -->
     <div id="tab-settings" class="tab-content">
       <div class="settings-grid">
-        <!-- Combined Alerts & Scan -->
         <div class="settings-card">
           <div class="settings-card-title">Scanner Settings</div>
-          <div class="form-group"><label class="form-label">Zone Proximity (%)</label><input type="number" id="setting-proximity" value="0" min="0" max="10" step="0.1"><div class="form-hint">0 = alert on zone entry only. Higher = alert when approaching.</div></div>
-          <div class="form-group"><label class="form-label">Refresh Interval</label><select id="setting-interval"><option value="15">15s</option><option value="30">30s</option><option value="60">1m</option><option value="300" selected>5m</option></select></div>
-          <div class="form-group"><label class="form-label">Lookback (trading days)</label><input type="number" id="setting-lookback" value="252" min="30" max="1000"><div class="form-hint">252 ≈ 1 year</div></div>
+          <div class="form-group"><label class="form-label">Zone Proximity (%)</label><input type="number" id="setting-proximity" value="0" min="0" max="10" step="0.1"><div class="form-hint-visible">0 = alert on zone entry only. Higher values alert when price approaches a zone.</div></div>
+          <div class="form-group"><label class="form-label">Refresh Interval</label><select id="setting-interval"><option value="15">15s</option><option value="30">30s</option><option value="60">1m</option><option value="300" selected>5m</option></select><div class="form-hint-visible">How often the scanner checks prices during market hours.</div></div>
+          <div class="form-group"><label class="form-label">Lookback (trading days)</label><input type="number" id="setting-lookback" value="252" min="30" max="1000"><div class="form-hint-visible">252 ≈ 1 year of trading days. More = older gaps detected.</div></div>
           <div class="form-group"><label class="form-label">Max Gaps Per Symbol</label><input type="number" id="setting-max-gaps" value="50" min="5" max="200"></div>
           <div class="btn-row"><button class="btn btn-primary" onclick="saveSettings()">Save Settings</button></div>
-        </div>
-        <!-- MA + API Key Status -->
-        <div class="settings-card">
-          <div class="settings-card-title">Moving Averages</div>
-          <div class="ma-row"><span class="ma-label">10</span><select id="setting-ma10-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma10-color" value="#f59e0b" class="ma-color-input"></div>
-          <div class="ma-row"><span class="ma-label">20</span><select id="setting-ma20-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma20-color" value="#3b82f6" class="ma-color-input"></div>
-          <div class="ma-row"><span class="ma-label">50</span><select id="setting-ma50-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma50-color" value="#a855f7" class="ma-color-input"></div>
-          <div class="ma-row"><span class="ma-label">200</span><select id="setting-ma200-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma200-color" value="#ef4444" class="ma-color-input"></div>
-          <div class="btn-row"><button class="btn btn-primary" onclick="saveSettings()">Save Settings</button></div>
           <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border-1);">
-            <div style="font-size:10px;color:var(--text-4);margin-bottom:4px;">Alpaca API Key</div>
-            <div id="api-key-display" style="font-family:'DM Mono';font-size:10px;color:var(--text-3);">Not configured</div>
+            <div class="settings-card-title" style="margin-bottom:6px;">Moving Averages</div>
+            <div class="ma-row"><span class="ma-label">10</span><select id="setting-ma10-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma10-color" value="#f59e0b" class="ma-color-input"></div>
+            <div class="ma-row"><span class="ma-label">20</span><select id="setting-ma20-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma20-color" value="#3b82f6" class="ma-color-input"></div>
+            <div class="ma-row"><span class="ma-label">50</span><select id="setting-ma50-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma50-color" value="#a855f7" class="ma-color-input"></div>
+            <div class="ma-row"><span class="ma-label">200</span><select id="setting-ma200-type" class="ma-type-select"><option value="sma">SMA</option><option value="ema">EMA</option></select><input type="color" id="setting-ma200-color" value="#ef4444" class="ma-color-input"></div>
+            <div class="btn-row"><button class="btn btn-primary" onclick="saveSettings()">Save Settings</button></div>
+          </div>
+          <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border-1);">
+            <div style="font-size:10px;color:var(--text-4);margin-bottom:3px;">Alpaca API Key</div>
+            <div id="api-key-display" style="font-family:'DM Mono';font-size:10px;color:var(--olive-bright);">Not configured</div>
+            <div style="font-size:10px;color:var(--text-4);margin-top:6px;margin-bottom:3px;">Polygon.io Key</div>
+            <div id="polygon-key-display" style="font-family:'DM Mono';font-size:10px;color:var(--text-3);">Not configured</div>
+            <div style="font-size:10px;color:var(--text-4);margin-top:6px;margin-bottom:3px;">FMP Key</div>
+            <div id="fmp-key-display" style="font-family:'DM Mono';font-size:10px;color:var(--text-3);">Not configured</div>
           </div>
         </div>
+
+        <!-- Alert Filters -->
+        <div class="settings-card">
+          <div class="settings-card-title">Alert Filters</div>
+          <div class="form-hint-visible" style="margin-bottom:10px;">Create conditions to filter which gap alerts are shown. For example: only show support gaps when price is above the 200-day SMA.</div>
+          <div id="filter-list"></div>
+          <button class="btn btn-secondary" onclick="addFilter()" style="margin-top:8px;">+ Add Filter</button>
+          <div class="btn-row"><button class="btn btn-primary" onclick="saveFilters()">Save Filters</button></div>
+        </div>
+
         <!-- Watchlist -->
         <div class="settings-card" style="grid-column:1/-1;">
           <div class="settings-card-title">Watchlist</div>
@@ -51,24 +68,32 @@
           <div style="margin-bottom:5px;"><input type="text" id="watchlist-search" placeholder="Search watchlist..." oninput="renderWatchlistManager()" style="font-size:10px;"></div>
           <div style="font-size:9px;color:var(--text-4);margin-bottom:4px;"><span id="watchlist-count">0</span> symbols (A-Z)</div>
           <div id="watchlist-symbols" class="watchlist-symbols"></div>
-          <div class="btn-row"><button class="btn btn-primary" onclick="saveWatchlist()">Save & Reinitialize</button><button class="btn btn-secondary" onclick="clearWatchlist()">Clear All</button></div>
+          <div class="btn-row"><button class="btn btn-primary" onclick="saveWatchlist()">Save & Reinitialize</button><button class="btn btn-danger" onclick="confirmClearWatchlist()">Clear All</button></div>
         </div>
       </div>
     </div>
+
+    <!-- SETUP -->
     <div id="tab-setup" class="tab-content">
       <div class="setup-container">
         <div class="setup-step"><span class="step-number">1</span><h3 class="step-title">Create a Free Alpaca Account</h3><div class="step-body"><strong>Alpaca</strong> provides the market data that powers this scanner.<br><br>1. Go to <a href="https://alpaca.markets" target="_blank">alpaca.markets</a><br>2. Click <strong>"Sign Up"</strong><br>3. Choose <strong>"Paper Trading"</strong> (free, no real money)<br>4. Complete sign-up and verify your email</div></div>
         <div class="setup-step"><span class="step-number">2</span><h3 class="step-title">Generate Your API Keys</h3><div class="step-body">1. Log in to your Alpaca dashboard<br>2. Click <strong>"Paper Trading"</strong> in the left sidebar<br>3. Find <strong>"API Keys"</strong> and click <strong>"Generate"</strong><br>4. Copy both values:<br>&nbsp;&nbsp;• <code>API Key ID</code> — starts with "PK"<br>&nbsp;&nbsp;• <code>Secret Key</code> — shown once only!<br><br><em>Save your Secret Key immediately — it won't be shown again.</em></div></div>
-        <div class="setup-step"><span class="step-number">3</span><h3 class="step-title">Enter Your Keys Below</h3><div class="step-body">Stored securely under your account only.</div>
+        <div class="setup-step"><span class="step-number">3</span><h3 class="step-title">Enter Alpaca Keys</h3><div class="step-body">Stored securely under your account only.</div>
           <div class="setup-keys-form"><div class="form-group"><label class="form-label">API Key ID</label><input type="text" id="setup-api-key" placeholder="PK..."></div><div class="form-group"><label class="form-label">Secret Key</label><input type="password" id="setup-secret-key" placeholder="Paste your secret key"></div><div class="form-group"><label class="form-label">Account Type</label><select id="setup-base-url"><option value="https://paper-api.alpaca.markets">Paper Trading (recommended)</option><option value="https://api.alpaca.markets">Live Trading</option></select></div><div class="btn-row"><button id="setup-submit-btn" class="btn btn-primary" onclick="submitSetup()">Validate & Save Keys</button></div></div>
         </div>
-        <div class="setup-step"><span class="step-number">4</span><h3 class="step-title">Build Your Watchlist</h3><div class="step-body">Go to <strong>Settings</strong> → add symbols one at a time or bulk paste.<br>The scanner fetches history and calculates gap zones for each symbol.</div></div>
-        <div class="setup-step"><span class="step-number">5</span><h3 class="step-title">Configure & Scan</h3><div class="step-body"><strong>Zone Proximity</strong> — 0% = alert on zone entry. Increase for early warnings.<br><strong>Refresh Interval</strong> — How often prices are checked (15s to 5min).<br><br>The scanner runs during market hours (9:30 AM - 4:00 PM ET). Alerts reset each morning before market open.</div></div>
-        <div class="setup-step"><span class="step-number">6</span><h3 class="step-title">Understanding Alerts</h3><div class="step-body"><strong style="color:var(--support);">Support (Green)</strong> — Price pulling back into a gap-up zone.<br><strong style="color:var(--resistance);">Resistance (Red)</strong> — Price pushing up into a gap-down zone.<br><strong style="color:var(--untested);">Untested (Yellow)</strong> — New gaps, first contact.<br><br>Click any card to open a chart with MAs and zone overlays. Each zone only fires one alert per day.</div></div>
+        <div class="setup-step"><span class="step-number">4</span><h3 class="step-title">Optional: Additional Data Providers</h3><div class="step-body">For extended intraday chart history, you can add keys from these providers. Both offer free tiers.</div>
+          <div class="setup-keys-form">
+            <div class="form-group"><label class="form-label">Polygon.io API Key</label><input type="text" id="setup-polygon-key" placeholder="Your Polygon.io key"><div class="form-hint-visible">Free at <a href="https://polygon.io" target="_blank" style="color:var(--olive-bright);">polygon.io</a> — provides extended intraday data.</div></div>
+            <div class="form-group"><label class="form-label">FMP API Key</label><input type="text" id="setup-fmp-key" placeholder="Your FMP key"><div class="form-hint-visible">Free at <a href="https://site.financialmodelingprep.com" target="_blank" style="color:var(--olive-bright);">financialmodelingprep.com</a> — additional market data.</div></div>
+            <div class="btn-row"><button class="btn btn-primary" onclick="saveExtraKeys()">Save Additional Keys</button></div>
+          </div>
+        </div>
+        <div class="setup-step"><span class="step-number">5</span><h3 class="step-title">Build Your Watchlist</h3><div class="step-body">Go to <strong>Settings</strong> → add symbols one at a time or bulk paste.</div></div>
+        <div class="setup-step"><span class="step-number">6</span><h3 class="step-title">Understanding Alerts</h3><div class="step-body"><strong style="color:var(--support);">Support (Green)</strong> — Price pulling back into a gap-up zone.<br><strong style="color:var(--resistance);">Resistance (Red)</strong> — Price pushing up into a gap-down zone.<br><strong style="color:var(--untested);">Untested (Orange)</strong> — New gaps, first contact.<br><br>Click any card to open a chart. Each zone fires one alert per day. Alerts reset before market open.</div></div>
       </div>
     </div>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=13"></script>
+  <script src="/static/app.js?v=14"></script>
 </body>
 </html>
