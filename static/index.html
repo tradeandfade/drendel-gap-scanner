@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Drendel Gap Scanner</title>
-  <link rel="stylesheet" href="/static/style.css?v=16">
+  <link rel="stylesheet" href="/static/style.css?v=17">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23080808'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%237c9a5e'>G</text></svg>">
 </head>
 <body>
@@ -16,7 +16,19 @@
     <!-- SCANNER -->
     <div id="tab-scanner" class="tab-content active">
       <div style="display:flex;gap:12px;margin-bottom:8px;font-family:'DM Mono';font-size:9px;color:var(--text-4);"><span>Last scan: <span id="last-scan-time" style="color:var(--text-3)">—</span></span><span>Last zone build: <span id="last-build-time" style="color:var(--text-3)">—</span></span></div>
-      <div class="scanner-layout"><div class="alert-sidebar"><div class="sidebar-header"><span class="sidebar-title">Feed</span><span id="feed-count" class="sidebar-count">0</span></div><div id="alert-feed" class="alert-feed"><div class="empty-state"><div class="empty-state-text">No alerts yet.</div></div></div></div><div class="scanner-main"><div class="scanner-toolbar"><button class="btn btn-ghost" onclick="confirmClearAlerts()">Clear</button></div><div id="alerts-support" class="alert-section"></div><div id="alerts-resistance" class="alert-section"></div><div id="alerts-untested" class="alert-section"></div></div></div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:12px;">
+        <!-- GAP SCANNER (left) -->
+        <div>
+          <div class="scanner-layout"><div class="alert-sidebar"><div class="sidebar-header"><span class="sidebar-title">Feed</span><span id="feed-count" class="sidebar-count">0</span></div><div id="alert-feed" class="alert-feed"><div class="empty-state"><div class="empty-state-text">No alerts yet.</div></div></div></div><div class="scanner-main"><div class="scanner-toolbar"><button class="btn btn-ghost" onclick="confirmClearAlerts()">Clear</button></div><div id="alerts-support" class="alert-section"></div><div id="alerts-resistance" class="alert-section"></div><div id="alerts-untested" class="alert-section"></div></div></div>
+        </div>
+        <!-- MA SCANNER (right) — only visible when enabled -->
+        <div id="ma-scanner-panel" style="display:none;width:280px;min-width:280px;">
+          <div class="settings-card" style="height:100%;display:flex;flex-direction:column;">
+            <div class="settings-card-title" style="display:flex;align-items:center;justify-content:space-between;">MA Crossovers <span id="ma-alert-count" style="font-family:'DM Mono';font-size:8px;background:var(--olive);color:#000;padding:1px 5px;border-radius:6px;">0</span></div>
+            <div id="ma-alerts-list" style="flex:1;overflow-y:auto;"></div>
+          </div>
+        </div>
+      </div>
       <div id="undo-bar" class="undo-bar" style="display:none;"><span>Cleared.</span><button class="btn btn-secondary" onclick="undoClearAlerts()" style="padding:2px 8px;font-size:9px;">Undo</button><button class="btn btn-ghost" onclick="dismissUndo()">✕</button></div>
     </div>
 
@@ -76,6 +88,17 @@
             <button class="btn btn-secondary" onclick="addFilter()" style="margin-top:8px;">+ Add Filter</button>
             <div class="btn-row"><button class="btn btn-primary" onclick="saveFilters()">Save Filters</button></div>
           </div>
+          <div class="settings-card">
+            <div class="settings-card-title">MA Crossover Scanner</div>
+            <div class="form-hint-visible" style="margin-bottom:10px;">Enable to detect when stocks on your watchlist cross a moving average. The scanner panel appears on the main Scanner page.</div>
+            <div class="toggle-row"><span class="toggle-label" style="font-weight:500;">Enable MA Scanner</span><label class="toggle"><input type="checkbox" id="setting-ma-enabled"><span class="toggle-slider"></span></label></div>
+            <div id="ma-config-area" style="margin-top:10px;">
+              <div style="font-size:10px;color:var(--text-3);margin-bottom:6px;">Moving Averages to Track</div>
+              <div id="ma-scanner-list"></div>
+              <button class="btn btn-secondary" onclick="addMAConfig()" style="margin-top:6px;">+ Add MA</button>
+              <div class="btn-row"><button class="btn btn-primary" onclick="saveMAConfig()">Save MA Scanner</button></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -101,6 +124,6 @@
     </div>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=16"></script>
+  <script src="/static/app.js?v=17"></script>
 </body>
 </html>

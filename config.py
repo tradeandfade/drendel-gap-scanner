@@ -18,6 +18,10 @@ DEFAULT_CONFIG = {
         "proximity_pct": 0.0,
     },
     "alert_filters": [],
+    "ma_scanner": {
+        "enabled": False,
+        "moving_averages": [],
+    },
     "display": {
         "show_untested": True,
         "show_age": True,

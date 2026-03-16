@@ -6,15 +6,15 @@ var _origFetch=window.fetch;
 async function doLogout(){_isLoggingOut=true;stopAutoRefresh();var o=document.createElement('div');o.innerHTML='<div style="text-align:center"><div style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--olive);color:#000;font-weight:700;font-size:16px;margin:0 auto 12px">G</div><div style="font-size:12px;color:var(--text-2);margin-bottom:14px">Logging out...</div><div style="width:160px;height:2px;background:var(--border-1);border-radius:1px;overflow:hidden;margin:0 auto"><div id="logout-bar" style="height:100%;width:0%;background:var(--olive);transition:width 1s cubic-bezier(.4,0,.2,1)"></div></div></div>';o.style.cssText='position:fixed;inset:0;z-index:600;background:var(--bg-0);display:flex;align-items:center;justify-content:center';document.body.appendChild(o);requestAnimationFrame(function(){requestAnimationFrame(function(){var b=document.getElementById('logout-bar');if(b)b.style.width='100%'})});try{await _origFetch('/api/auth/logout',{method:'POST'})}catch(e){}await sleep(1100);window.location.replace('/login')}
 window.fetch=async function(){var a=arguments;if(_isLoggingOut||_hasRedirected)return new Response('{}',{status:0});var r=await _origFetch.apply(this,a);if(r.status===401&&!_hasRedirected&&a[0]&&typeof a[0]==='string'&&a[0].indexOf('/api/')===0&&a[0].indexOf('/auth/')<0){_hasRedirected=true;_isLoggingOut=true;stopAutoRefresh();await sleep(200);window.location.replace('/login')}return r};
 document.addEventListener('DOMContentLoaded',async function(){try{var r=await _origFetch('/api/auth/status');var d=await r.json();if(!d.authenticated){window.location.replace('/login');return}}catch(e){}setupTabs();await initLoad()});
-async function initLoad(){var ov=document.getElementById('init-overlay'),st=document.getElementById('init-status-text'),dt=document.getElementById('init-detail'),pb=document.getElementById('init-progress-bar');if(!ov){await normalInit();return}pb.classList.add('indeterminate');st.textContent='Loading...';var att=0;while(att<180){if(_isLoggingOut||_hasRedirected)return;try{var r=await _origFetch(API.status);if(r.status===401){_hasRedirected=true;window.location.replace('/login');return}state.status=await r.json();var s=state.status;if(s.initialized){pb.classList.remove('indeterminate');pb.style.width='100%';st.textContent='Ready';dt.textContent=s.zone_count?s.symbol_count+' sym · '+s.zone_count+' zones':s.symbol_count+' symbols';await sleep(250);await loadSettings();await loadAlerts();renderStatus();startAutoRefresh();ov.classList.add('hidden');return}else if(s.error&&!s.running){st.textContent='Setup needed';dt.textContent=s.error;await sleep(500);await loadSettings();renderStatus();switchTab('setup');ov.classList.add('hidden');return}else{st.textContent='Loading...';dt.textContent=s.symbol_count?s.symbol_count+' symbols':'Connecting...';if(s.symbol_count){pb.classList.remove('indeterminate');pb.style.width='50%'}}}catch(e){st.textContent='Connecting...'}att++;await sleep(1000)}await normalInit();ov.classList.add('hidden')}
-async function normalInit(){await loadStatus();await loadSettings();if(!state.status.initialized)switchTab('setup');else{switchTab('scanner');await loadAlerts();startAutoRefresh()}}
+async function initLoad(){var ov=document.getElementById('init-overlay'),st=document.getElementById('init-status-text'),dt=document.getElementById('init-detail'),pb=document.getElementById('init-progress-bar');if(!ov){await normalInit();return}pb.classList.add('indeterminate');st.textContent='Loading...';var att=0;while(att<180){if(_isLoggingOut||_hasRedirected)return;try{var r=await _origFetch(API.status);if(r.status===401){_hasRedirected=true;window.location.replace('/login');return}state.status=await r.json();var s=state.status;if(s.initialized){pb.classList.remove('indeterminate');pb.style.width='100%';st.textContent='Ready';dt.textContent=s.zone_count?s.symbol_count+' sym · '+s.zone_count+' zones':s.symbol_count+' symbols';await sleep(250);await loadSettings();await loadAlerts();await loadMAAlerts();renderStatus();startAutoRefresh();ov.classList.add('hidden');return}else if(s.error&&!s.running){st.textContent='Setup needed';dt.textContent=s.error;await sleep(500);await loadSettings();renderStatus();switchTab('setup');ov.classList.add('hidden');return}else{st.textContent='Loading...';dt.textContent=s.symbol_count?s.symbol_count+' symbols':'Connecting...';if(s.symbol_count){pb.classList.remove('indeterminate');pb.style.width='50%'}}}catch(e){st.textContent='Connecting...'}att++;await sleep(1000)}await normalInit();ov.classList.add('hidden')}
+async function normalInit(){await loadStatus();await loadSettings();if(!state.status.initialized)switchTab('setup');else{switchTab('scanner');await loadAlerts();await loadMAAlerts();startAutoRefresh()}}
 function setupTabs(){document.querySelectorAll('.tab-btn').forEach(function(b){b.addEventListener('click',function(){switchTab(b.dataset.tab)})})}
 function switchTab(t){state.activeTab=t;document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.toggle('active',b.dataset.tab===t)});document.querySelectorAll('.tab-content').forEach(function(c){c.classList.toggle('active',c.id==='tab-'+t)});if(t==='zones')loadZones();if(t==='settings')renderSettings()}
 async function loadAlerts(){try{var r=await fetch(API.alerts);state.alerts=await r.json();renderAlerts();updateAlertFeed();updateAlertCounts()}catch(e){}}
 async function loadZones(){try{var r=await fetch(API.zones);state.zones=await r.json();renderZoneTable()}catch(e){}}
 async function loadStatus(){try{var r=await fetch(API.status);state.status=await r.json();renderStatus()}catch(e){}}
 async function loadSettings(){try{var r=await fetch(API.settings);state.settings=await r.json();state.filters=state.settings.alert_filters||[]}catch(e){}}
-function startAutoRefresh(){stopAutoRefresh();var ms=Math.max((state.settings.scan_interval_seconds||300)*1000,10000);state.refreshTimer=setInterval(async function(){await loadAlerts();await loadStatus();if(state.activeTab==='zones')await loadZones()},ms)}
+function startAutoRefresh(){stopAutoRefresh();var ms=Math.max((state.settings.scan_interval_seconds||300)*1000,10000);state.refreshTimer=setInterval(async function(){await loadAlerts();await loadMAAlerts();await loadStatus();if(state.activeTab==='zones')await loadZones()},ms)}
 function stopAutoRefresh(){if(state.refreshTimer){clearInterval(state.refreshTimer);state.refreshTimer=null}}
 function renderStatus(){var s=state.status,d=document.getElementById('status-dot'),t=document.getElementById('status-text');if(!d||!t)return;if(s.error){d.className='status-dot error';t.textContent='Err'}else if(s.running){d.className='status-dot active';t.textContent=s.last_scan||'On'}else if(s.initialized){d.className='status-dot';t.textContent='Idle'}else{d.className='status-dot';t.textContent='—'}var sc=document.getElementById('symbol-count'),zc=document.getElementById('zone-count');if(sc)sc.textContent=s.symbol_count||0;if(zc)zc.textContent=s.zone_count||0;var lst=document.getElementById('last-scan-time');if(lst)lst.textContent=s.last_scan||'—';var lbt=document.getElementById('last-build-time');if(lbt)lbt.textContent=s.last_eod_update||'—'}
 function updateAlertCounts(){var a=state.alerts,n=(a.support?a.support.length:0)+(a.resistance?a.resistance.length:0)+(a.untested?a.untested.length:0);var e=document.querySelector('[data-tab="scanner"] .tab-count');if(e)e.textContent=n}
@@ -53,6 +53,10 @@ var pkd=document.getElementById('polygon-key-display');if(pkd){pkd.textContent=s
 var fkd=document.getElementById('fmp-key-display');if(fkd){fkd.textContent=s.fmp_api_key_display||'Not configured';fkd.style.color=s.fmp_api_key_display?'var(--olive-bright)':'var(--text-4)'}
 // Populate provider dropdowns based on available keys
 populateProviderDropdowns(s);
+// Populate MA scanner config
+var maCfg=s.ma_scanner||{};
+var maEn=document.getElementById('setting-ma-enabled');if(maEn)maEn.checked=!!maCfg.enabled;
+maConfigs=(maCfg.moving_averages||[]).slice();renderMAConfig();
 state.filters=s.alert_filters||[];renderFilters();loadWatchlist()}
 function sv(id,v){var e=document.getElementById(id);if(e&&v!==undefined)e.value=v}
 
@@ -108,4 +112,50 @@ async function saveProviders(){
   if(sp)body.scanner_provider=sp.value;
   if(cp)body.chart_provider=cp.value;
   try{var r=await fetch(API.settings,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var d=await r.json();if(d.ok){showToast('Providers saved. Reinitializing...','success');await fetch(API.reinit,{method:'POST'});await loadSettings();await loadStatus()}else showToast('Failed.','error')}catch(e){showToast('Error.','error')}
+}
+
+/* ===== MA CROSSOVER SCANNER ===== */
+var maConfigs=[];
+
+async function loadMAAlerts(){
+  var panel=document.getElementById('ma-scanner-panel');
+  var maCfg=state.settings.ma_scanner||{};
+  if(!maCfg.enabled){if(panel)panel.style.display='none';return}
+  if(panel)panel.style.display='block';
+  try{var r=await fetch('/api/ma-alerts');var alerts=await r.json();renderMAAlerts(alerts)}catch(e){}
+}
+
+function renderMAAlerts(alerts){
+  var c=document.getElementById('ma-alerts-list');
+  var cnt=document.getElementById('ma-alert-count');
+  if(!c)return;
+  if(cnt)cnt.textContent=alerts.length;
+  if(!alerts.length){c.innerHTML='<div class="empty-state"><div class="empty-state-text">No MA crossovers detected.</div></div>';return}
+  c.innerHTML=alerts.map(function(a){
+    var dirCls=a.direction==='cross_above'?'cross-above':'cross-below';
+    var dirLabel=a.direction==='cross_above'?'▲ ABOVE':'▼ BELOW';
+    var trendIcon=a.ma_trend==='rising'?'↗':a.ma_trend==='declining'?'↘':'→';
+    var special='';
+    if(a.special_badge==='bullish_bounce')special='<div class="ma-special bullish_bounce">🟢 Bullish Bounce</div>';
+    else if(a.special_badge==='bearish_rejection')special='<div class="ma-special bearish_rejection">🔴 Bearish Rejection</div>';
+    return'<div class="ma-alert-card" onclick="openChart(\''+a.symbol+'\')"><div><span class="ma-sym">'+a.symbol+'</span><span class="ma-price">$'+a.current_price.toFixed(2)+'</span></div><div class="ma-detail"><span class="ma-dir '+dirCls+'">'+dirLabel+'</span><span>'+a.ma_period+' '+a.ma_type.toUpperCase()+'</span><span style="color:var(--text-4)">($'+a.ma_value.toFixed(2)+')</span><span class="ma-trend-badge '+a.ma_trend+'">'+trendIcon+' '+a.ma_trend+'</span></div>'+special+'</div>'
+  }).join('')
+}
+
+function renderMAConfig(){
+  var c=document.getElementById('ma-scanner-list');if(!c)return;
+  if(!maConfigs.length){c.innerHTML='<div style="font-size:10px;color:var(--text-4);padding:4px 0;">No MAs configured. Add one to start scanning.</div>';return}
+  c.innerHTML=maConfigs.map(function(m,i){
+    return'<div class="ma-config-row"><input type="number" value="'+m.period+'" min="1" max="500" onchange="updateMAConfig('+i+',\'period\',parseInt(this.value))"><select onchange="updateMAConfig('+i+',\'type\',this.value)"><option value="sma"'+(m.type==='sma'?' selected':'')+'>SMA</option><option value="ema"'+(m.type==='ema'?' selected':'')+'>EMA</option></select><span style="font-size:9px;color:var(--text-4);">day</span><button class="ma-config-remove" onclick="removeMAConfig('+i+')">✕</button></div>'
+  }).join('')
+}
+
+function addMAConfig(){maConfigs.push({period:20,type:'sma'});renderMAConfig()}
+function removeMAConfig(i){maConfigs.splice(i,1);renderMAConfig()}
+function updateMAConfig(i,key,val){maConfigs[i][key]=val}
+
+async function saveMAConfig(){
+  var enabled=document.getElementById('setting-ma-enabled');
+  var body={ma_scanner:{enabled:enabled?enabled.checked:false,moving_averages:maConfigs}};
+  try{var r=await fetch(API.settings,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var d=await r.json();if(d.ok){showToast('MA Scanner saved.','success');await loadSettings();loadMAAlerts()}else showToast('Failed.','error')}catch(e){showToast('Error.','error')}
 }

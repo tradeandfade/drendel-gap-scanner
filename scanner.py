@@ -20,6 +20,7 @@ from data_fetcher import AlpacaFetcher
 from polygon_fetcher import PolygonFetcher
 from fmp_fetcher import FMPFetcher
 from gap_engine import build_gap_zones, check_zone_alerts, update_zones_eod
+from ma_scanner import check_ma_crossovers
 from models import ScannerStatus
 from utils import setup_logging, is_market_open, now_et
 
@@ -294,6 +295,28 @@ async def run_user_scan_cycle(username: str):
         state["status"].zone_count = sum(len(z) for z in state["zones"].values())
         _save_alerts(user_dir, all_alerts)
 
+        # === MA CROSSOVER SCANNER ===
+        ma_cfg = cfg.get("ma_scanner", {})
+        if ma_cfg.get("enabled") and ma_cfg.get("moving_averages"):
+            if "ma_fired_today" not in state:
+                state["ma_fired_today"] = set()
+
+            ma_alerts = []
+            for symbol in watchlist:
+                price = prices.get(symbol)
+                closes = state.get("daily_closes", {}).get(symbol)
+                if price is None or not closes:
+                    continue
+                crossovers = check_ma_crossovers(
+                    symbol, price, closes, ma_cfg["moving_averages"], state["ma_fired_today"]
+                )
+                for alert in crossovers:
+                    alert.timestamp = now_et().strftime("%Y-%m-%d %H:%M:%S ET")
+                    ma_alerts.append(alert.to_dict())
+
+            state["ma_alerts"] = ma_alerts
+            _save_ma_alerts(user_dir, ma_alerts)
+
     except Exception as e:
         logger.error(f"[{username}] Scan cycle error: {e}")
         state["status"].error = str(e)
@@ -393,6 +416,30 @@ def _load_alert_backup(user_dir: Path) -> dict | None:
         except Exception:
             pass
     return None
+
+
+def _save_ma_alerts(user_dir: Path, alerts: list):
+    """Save MA crossover alerts to disk."""
+    import json
+    path = user_dir / "ma_alerts.json"
+    try:
+        with open(path, "w") as f:
+            json.dump(alerts, f)
+    except Exception:
+        pass
+
+
+def _load_ma_alerts(user_dir: Path) -> list:
+    """Load MA crossover alerts from disk."""
+    import json
+    path = user_dir / "ma_alerts.json"
+    if path.exists():
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
 
 
 def _save_cached_zones(user_dir: Path, zones_dict: dict):
@@ -520,7 +567,10 @@ async def user_scan_loop(username: str):
             state["alerts"] = {"support": [], "resistance": [], "untested": []}
             state["status"].alert_count = 0
             state["fired_today"] = set()  # Reset dedup tracking
+            state["ma_fired_today"] = set()  # Reset MA dedup
+            state["ma_alerts"] = []
             _save_alerts(user_dir, state["alerts"])
+            _save_ma_alerts(user_dir, [])
             last_reset_date = today
             logger.info(f"[{username}] Daily reset: alerts cleared for new trading day.")
 
@@ -806,6 +856,13 @@ async def restore_alerts(request: Request):
         _save_alerts(user_dir, backup)
         return JSONResponse({"ok": True, "message": "Alerts restored."})
     return JSONResponse({"ok": False, "message": "No backup available."}, status_code=404)
+
+
+@app.get("/api/ma-alerts")
+async def get_ma_alerts(request: Request):
+    username = get_current_user(request)
+    state = get_user_state(username)
+    return JSONResponse(state.get("ma_alerts", []))
 
 
 @app.get("/api/zones")
