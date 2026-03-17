@@ -289,8 +289,22 @@ async def run_user_scan_cycle(username: str):
                 a["same_side_count"] = count
 
                 # MA Stack badge: 10>20>50>200 for bullish, reverse for bearish
-                closes = state.get("daily_closes", {}).get(sym)
+                if "daily_closes" not in state:
+                    state["daily_closes"] = {}
+                closes = state["daily_closes"].get(sym)
                 ma_stack = ""
+                if not closes and state.get("fetcher") and sym not in state.get("_closes_attempted", set()):
+                    # Fetch closes once if not cached yet
+                    if "_closes_attempted" not in state:
+                        state["_closes_attempted"] = set()
+                    state["_closes_attempted"].add(sym)
+                    try:
+                        bars = await state["fetcher"].fetch_daily_bars(sym, 250)
+                        if bars:
+                            state["daily_closes"][sym] = [b.close for b in bars]
+                            closes = state["daily_closes"][sym]
+                    except Exception:
+                        pass
                 if closes and len(closes) >= 200:
                     sma10 = _compute_sma(closes, 10)
                     sma20 = _compute_sma(closes, 20)
