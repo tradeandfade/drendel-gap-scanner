@@ -1124,29 +1124,32 @@ async def debug_ma(symbol: str, request: Request):
         "fired_today_keys": [k for k in state.get("ma_fired_today", set()) if symbol in k],
     }
 
-    if closes and price:
+    if closes and price and len(closes) >= 3:
+        prev_close_val = closes[-2]
+        closes_for_ma = closes[:-1]
+        result["prev_close"] = round(prev_close_val, 2)
+        result["prev_close_note"] = "Using closes[-2] as yesterday"
+        result["closes_for_ma_count"] = len(closes_for_ma)
+
         for mac in ma_cfgs:
             period = mac.get("period", 20)
             ma_type = mac.get("type", "sma")
-            ma_val = compute_ma(closes, period, ma_type)
+            ma_val = compute_ma(closes_for_ma, period, ma_type)
             key = f"{period} {ma_type.upper()}"
             result["ma_values"][key] = round(ma_val, 4) if ma_val else None
 
             if ma_val:
-                prev = closes[-1]
                 result["crossover_check"][key] = {
                     "ma_value": round(ma_val, 2),
-                    "prev_close": round(prev, 2),
+                    "prev_close_yesterday": round(prev_close_val, 2),
                     "current_price": round(price, 2),
-                    "prev_above_ma": prev >= ma_val,
-                    "prev_below_ma": prev <= ma_val,
-                    "prev_strictly_above": prev > ma_val,
-                    "prev_strictly_below": prev < ma_val,
+                    "prev_strictly_above": prev_close_val > ma_val,
+                    "prev_strictly_below": prev_close_val < ma_val,
                     "curr_at_or_above": price >= ma_val,
                     "curr_at_or_below": price <= ma_val,
-                    "would_cross_below": (prev > ma_val) and (price <= ma_val),
-                    "would_cross_above": (prev < ma_val) and (price >= ma_val),
-                    "trend": get_ma_trend(closes, period, ma_type),
+                    "would_cross_below": (prev_close_val > ma_val) and (price <= ma_val),
+                    "would_cross_above": (prev_close_val < ma_val) and (price >= ma_val),
+                    "trend": get_ma_trend(closes_for_ma, period, ma_type),
                 }
 
     return JSONResponse(result)
