@@ -1097,6 +1097,61 @@ async def get_chart_data(symbol: str, request: Request):
     return JSONResponse({"bars": bar_data, "zones": zone_data, "timeframe": tf})
 
 
+@app.get("/api/debug/ma/{symbol}")
+async def debug_ma(symbol: str, request: Request):
+    """Debug: show MA values and crossover state for a symbol."""
+    username = get_current_user(request)
+    state = get_user_state(username)
+    symbol = symbol.upper()
+
+    from ma_scanner import compute_ma, get_ma_trend
+
+    closes = state.get("daily_closes", {}).get(symbol)
+    price = state.get("latest_prices", {}).get(symbol)
+    cfg = config.load_config(auth.get_user_data_dir(username))
+    ma_cfgs = cfg.get("ma_scanner", {}).get("moving_averages", [])
+
+    result = {
+        "symbol": symbol,
+        "current_price": price,
+        "has_closes": closes is not None,
+        "closes_count": len(closes) if closes else 0,
+        "prev_close": closes[-1] if closes else None,
+        "ma_scanner_enabled": cfg.get("ma_scanner", {}).get("enabled", False),
+        "ma_configs": ma_cfgs,
+        "ma_values": {},
+        "crossover_check": {},
+        "fired_today_keys": [k for k in state.get("ma_fired_today", set()) if symbol in k],
+    }
+
+    if closes and price:
+        for mac in ma_cfgs:
+            period = mac.get("period", 20)
+            ma_type = mac.get("type", "sma")
+            ma_val = compute_ma(closes, period, ma_type)
+            key = f"{period} {ma_type.upper()}"
+            result["ma_values"][key] = round(ma_val, 4) if ma_val else None
+
+            if ma_val:
+                prev = closes[-1]
+                result["crossover_check"][key] = {
+                    "ma_value": round(ma_val, 2),
+                    "prev_close": round(prev, 2),
+                    "current_price": round(price, 2),
+                    "prev_above_ma": prev >= ma_val,
+                    "prev_below_ma": prev <= ma_val,
+                    "prev_strictly_above": prev > ma_val,
+                    "prev_strictly_below": prev < ma_val,
+                    "curr_at_or_above": price >= ma_val,
+                    "curr_at_or_below": price <= ma_val,
+                    "would_cross_below": (prev > ma_val) and (price <= ma_val),
+                    "would_cross_above": (prev < ma_val) and (price >= ma_val),
+                    "trend": get_ma_trend(closes, period, ma_type),
+                }
+
+    return JSONResponse(result)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
