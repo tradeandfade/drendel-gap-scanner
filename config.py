@@ -9,8 +9,8 @@ DEFAULT_CONFIG = {
     "alpaca_base_url": "https://paper-api.alpaca.markets",
     "polygon_api_key": "",
     "fmp_api_key": "",
-    "scanner_provider": "alpaca",   # alpaca, polygon, fmp
-    "chart_provider": "alpaca",     # alpaca, polygon, fmp
+    "scanner_provider": "alpaca",
+    "chart_provider": "alpaca",
     "scan_interval_seconds": 300,
     "lookback_days": 252,
     "max_gaps_per_symbol": 50,
@@ -22,6 +22,11 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "moving_averages": [],
     },
+    "watchlists": {
+        "Default": [],
+    },
+    "active_watchlists": ["Default"],
+    "daily_reset_time": "09:00",
     "display": {
         "show_untested": True,
         "show_age": True,
@@ -41,10 +46,28 @@ def load_config(user_dir: Path) -> dict:
         try:
             with open(path, "r") as f:
                 saved = json.load(f)
-            return _deep_merge(DEFAULT_CONFIG.copy(), saved)
+            cfg = _deep_merge(DEFAULT_CONFIG.copy(), saved)
+            # Migrate legacy watchlist into watchlists["Default"]
+            if cfg.get("watchlist") and not cfg.get("watchlists", {}).get("Default"):
+                if "watchlists" not in cfg:
+                    cfg["watchlists"] = {}
+                cfg["watchlists"]["Default"] = cfg["watchlist"]
+            return cfg
         except (json.JSONDecodeError, IOError):
             return DEFAULT_CONFIG.copy()
     return DEFAULT_CONFIG.copy()
+
+
+def get_active_symbols(cfg: dict) -> list:
+    """Get combined unique symbols from all active watchlists."""
+    active = cfg.get("active_watchlists", ["Default"])
+    all_wl = cfg.get("watchlists", {})
+    symbols = set()
+    for name in active:
+        symbols.update(all_wl.get(name, []))
+    # Also include legacy watchlist for backward compat
+    symbols.update(cfg.get("watchlist", []))
+    return sorted(list(symbols))
 
 
 def save_config(user_dir: Path, config: dict) -> None:

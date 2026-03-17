@@ -133,7 +133,7 @@ async def initialize_user_scanner(username: str):
         state["chart_fetcher"] = fetcher
 
     logger.info(f"[{username}] Scanner provider: {scanner_provider}")
-    watchlist = cfg.get("watchlist", [])
+    watchlist = config.get_active_symbols(cfg)
 
     if not watchlist:
         state["status"].error = "Watchlist is empty. Add symbols in Settings."
@@ -225,7 +225,7 @@ async def run_user_scan_cycle(username: str):
     if not fetcher or not state["zones"]:
         return
 
-    watchlist = cfg.get("watchlist", [])
+    watchlist = config.get_active_symbols(cfg)
     if not watchlist:
         return
 
@@ -287,6 +287,22 @@ async def run_user_scan_cycle(username: str):
                 count = symbol_side_counts.get(sym, {}).get(base, 0)
                 a["multi_zone"] = count > 1
                 a["same_side_count"] = count
+
+                # MA Stack badge: 10>20>50>200 for bullish, reverse for bearish
+                closes = state.get("daily_closes", {}).get(sym)
+                ma_stack = ""
+                if closes and len(closes) >= 200:
+                    sma10 = _compute_sma(closes, 10)
+                    sma20 = _compute_sma(closes, 20)
+                    sma50 = _compute_sma(closes, 50)
+                    sma200 = _compute_sma(closes, 200)
+                    if sma10 and sma20 and sma50 and sma200:
+                        if sma10 > sma20 > sma50 > sma200:
+                            ma_stack = "bullish_stack"
+                        elif sma10 < sma20 < sma50 < sma200:
+                            ma_stack = "bearish_stack"
+                a["ma_stack"] = ma_stack
+
             all_alerts[key].sort(key=lambda a: a["penetration_pct"], reverse=True)
 
         state["alerts"] = all_alerts
@@ -523,7 +539,7 @@ async def _rebuild_zones_background(username, fetcher, watchlist, lookback, max_
     if not fetcher:
         return
 
-    watchlist = cfg.get("watchlist", [])
+    watchlist = config.get_active_symbols(cfg)
     max_gaps = cfg.get("max_gaps_per_symbol", 50)
     logger.info(f"[{username}] Running end-of-day zone rebuild...")
 
@@ -561,8 +577,15 @@ async def user_scan_loop(username: str):
         et_now = now_et()
         today = et_now.date()
 
-        # Daily reset: clear alerts before market open (9:30 AM ET)
-        if last_reset_date != today and et_now.hour < 10 and et_now.weekday() < 5:
+        # Daily reset using custom time (default 09:00 ET)
+        reset_time_str = cfg.get("daily_reset_time", "09:00")
+        try:
+            reset_hour, reset_min = int(reset_time_str.split(":")[0]), int(reset_time_str.split(":")[1])
+        except (ValueError, IndexError):
+            reset_hour, reset_min = 9, 0
+
+        past_reset = (et_now.hour > reset_hour) or (et_now.hour == reset_hour and et_now.minute >= reset_min)
+        if last_reset_date != today and past_reset and et_now.weekday() < 5:
             _save_alert_backup(user_dir, state["alerts"])
             state["alerts"] = {"support": [], "resistance": [], "untested": []}
             state["status"].alert_count = 0
@@ -930,7 +953,11 @@ async def get_watchlist(request: Request):
     username = get_current_user(request)
     user_dir = auth.get_user_data_dir(username)
     cfg = config.load_config(user_dir)
-    return JSONResponse({"watchlist": cfg.get("watchlist", [])})
+    return JSONResponse({
+        "watchlist": cfg.get("watchlist", []),
+        "watchlists": cfg.get("watchlists", {"Default": cfg.get("watchlist", [])}),
+        "active_watchlists": cfg.get("active_watchlists", ["Default"]),
+    })
 
 
 @app.post("/api/watchlist")
@@ -938,18 +965,56 @@ async def update_watchlist(request: Request):
     username = get_current_user(request)
     user_dir = auth.get_user_data_dir(username)
     body = await request.json()
-    symbols = body.get("watchlist", [])
-    cleaned = [s.upper().strip() for s in symbols if s.strip()]
-    cleaned = list(dict.fromkeys(cleaned))
-    config.update_config(user_dir, {"watchlist": cleaned})
+
+    # Support both legacy single watchlist and new multi-watchlist
+    if "watchlists" in body:
+        config.update_config(user_dir, {"watchlists": body["watchlists"]})
+    if "active_watchlists" in body:
+        config.update_config(user_dir, {"active_watchlists": body["active_watchlists"]})
+    if "watchlist" in body:
+        symbols = body.get("watchlist", [])
+        cleaned = [s.upper().strip() for s in symbols if s.strip()]
+        cleaned = list(dict.fromkeys(cleaned))
+        config.update_config(user_dir, {"watchlist": cleaned})
+
+    # If a specific named watchlist is being saved
+    if "watchlist_name" in body and "symbols" in body:
+        name = body["watchlist_name"]
+        syms = [s.upper().strip() for s in body["symbols"] if s.strip()]
+        syms = list(dict.fromkeys(syms))
+        cfg = config.load_config(user_dir)
+        wls = cfg.get("watchlists", {})
+        wls[name] = syms
+        config.update_config(user_dir, {"watchlists": wls})
+
     await reinitialize_user(username)
     state = get_user_state(username)
     total_zones = sum(len(z) for z in state["zones"].values())
+    cfg = config.load_config(user_dir)
+    active_syms = config.get_active_symbols(cfg)
     return JSONResponse({
-        "ok": True, "watchlist": cleaned,
-        "symbol_count": len(cleaned), "zone_count": total_zones,
-        "message": f"Watchlist saved. {len(cleaned)} symbols loaded, {total_zones} gap zones found.",
+        "ok": True,
+        "symbol_count": len(active_syms), "zone_count": total_zones,
+        "message": f"Watchlist saved. {len(active_syms)} symbols loaded, {total_zones} gap zones found.",
     })
+
+
+@app.post("/api/watchlist/delete")
+async def delete_watchlist(request: Request):
+    username = get_current_user(request)
+    user_dir = auth.get_user_data_dir(username)
+    body = await request.json()
+    name = body.get("name", "")
+    if not name or name == "Default":
+        return JSONResponse({"ok": False, "message": "Cannot delete Default watchlist."}, status_code=400)
+    cfg = config.load_config(user_dir)
+    wls = cfg.get("watchlists", {})
+    if name in wls:
+        del wls[name]
+        active = cfg.get("active_watchlists", [])
+        active = [a for a in active if a != name]
+        config.update_config(user_dir, {"watchlists": wls, "active_watchlists": active})
+    return JSONResponse({"ok": True, "message": f"Watchlist '{name}' deleted."})
 
 
 @app.post("/api/setup")
