@@ -80,20 +80,15 @@ def check_ma_crossovers(
     fired_today: set,
 ) -> list[MACrossAlert]:
     """
-    Check if current price is crossing any configured moving averages.
+    Check if current price is crossing or touching any configured moving averages.
 
-    A crossover is detected by comparing current price position relative to the MA
-    vs the previous close's position relative to the MA.
+    Logic: If price was on one side of the MA (based on previous daily close)
+    and has now reached or crossed to the other side, fire an alert.
+    
+    Example: MA at 100, prev close at 101 (above). Price drops to 100 or below → cross_below.
+    Example: MA at 100, prev close at 99 (below). Price rises to 100 or above → cross_above.
 
-    Args:
-        symbol: Stock ticker
-        current_price: Latest price
-        daily_closes: Historical daily closes (oldest first, most recent last)
-        ma_configs: List of {'period': int, 'type': 'sma'|'ema'}
-        fired_today: Set of already-fired alert keys for dedup
-
-    Returns:
-        List of MACrossAlert objects
+    One alert per MA per direction per day.
     """
     alerts = []
 
@@ -106,23 +101,25 @@ def check_ma_crossovers(
         period = mac.get("period", 20)
         ma_type = mac.get("type", "sma")
 
-        # Compute today's MA using all closes
         ma_value = compute_ma(daily_closes, period, ma_type)
         if ma_value is None:
             continue
 
-        # Determine if price crossed the MA
-        # prev_close was on one side, current_price is on the other
-        prev_above = prev_close > ma_value
-        curr_above = current_price > ma_value
-        prev_below = prev_close < ma_value
-        curr_below = current_price < ma_value
+        # Where was price at yesterday's close relative to the MA?
+        prev_above = prev_close >= ma_value
+        prev_below = prev_close <= ma_value
+
+        # Where is price now? Use >= and <= so touching the MA counts
+        curr_at_or_above = current_price >= ma_value
+        curr_at_or_below = current_price <= ma_value
 
         direction = None
-        if prev_below and curr_above:
-            direction = "cross_above"
-        elif prev_above and curr_below:
+        # Was above (or at), now at or below → crossing down
+        if prev_above and not prev_below and curr_at_or_below:
             direction = "cross_below"
+        # Was below (or at), now at or above → crossing up  
+        elif prev_below and not prev_above and curr_at_or_above:
+            direction = "cross_above"
 
         if direction is None:
             continue
