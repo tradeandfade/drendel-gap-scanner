@@ -330,6 +330,8 @@ async def run_user_scan_cycle(username: str):
         if ma_cfg.get("enabled") and ma_cfg.get("moving_averages"):
             if "ma_fired_today" not in state:
                 state["ma_fired_today"] = set()
+            if "ma_last_sides" not in state:
+                state["ma_last_sides"] = {}
 
             ma_alerts = []
             for symbol in watchlist:
@@ -338,14 +340,24 @@ async def run_user_scan_cycle(username: str):
                 if price is None or not closes:
                     continue
                 crossovers = check_ma_crossovers(
-                    symbol, price, closes, ma_cfg["moving_averages"], state["ma_fired_today"]
+                    symbol, price, closes, ma_cfg["moving_averages"],
+                    state["ma_fired_today"], state["ma_last_sides"]
                 )
                 for alert in crossovers:
                     alert.timestamp = now_et().strftime("%Y-%m-%d %H:%M:%S ET")
                     ma_alerts.append(alert.to_dict())
 
-            state["ma_alerts"] = ma_alerts
-            _save_ma_alerts(user_dir, ma_alerts)
+            # Append new alerts to existing ones (don't overwrite — accumulate throughout day)
+            existing = state.get("ma_alerts", [])
+            existing_keys = set()
+            for a in existing:
+                existing_keys.add(f"{a['symbol']}_ma{a['ma_period']}_{a['ma_type']}_{a['direction']}")
+            for a in ma_alerts:
+                k = f"{a['symbol']}_ma{a['ma_period']}_{a['ma_type']}_{a['direction']}"
+                if k not in existing_keys:
+                    existing.append(a)
+            state["ma_alerts"] = existing
+            _save_ma_alerts(user_dir, existing)
 
     except Exception as e:
         logger.error(f"[{username}] Scan cycle error: {e}")
@@ -581,7 +593,8 @@ async def user_scan_loop(username: str):
         await asyncio.sleep(2)
 
     logger.info(f"[{username}] Scan loop started.")
-    last_reset_date = None
+    last_reset_ts = None
+    last_rebuild_ts = None
 
     while True:
         user_dir = auth.get_user_data_dir(username)
@@ -589,46 +602,53 @@ async def user_scan_loop(username: str):
         interval = cfg.get("scan_interval_seconds", 300)
 
         et_now = now_et()
-        today = et_now.date()
 
-        # Daily reset using custom time (default 09:00 ET)
+        # --- CUSTOM RESET + ZONE REBUILD (outside market hours only) ---
         reset_time_str = cfg.get("daily_reset_time", "09:00")
         try:
             reset_hour, reset_min = int(reset_time_str.split(":")[0]), int(reset_time_str.split(":")[1])
         except (ValueError, IndexError):
             reset_hour, reset_min = 9, 0
 
-        past_reset = (et_now.hour > reset_hour) or (et_now.hour == reset_hour and et_now.minute >= reset_min)
-        if last_reset_date != today and past_reset and et_now.weekday() < 5:
+        reset_target = et_now.replace(hour=reset_hour, minute=reset_min, second=0, microsecond=0)
+
+        should_reset = (
+            et_now.weekday() < 5
+            and et_now >= reset_target
+            and (last_reset_ts is None or last_reset_ts < reset_target)
+        )
+
+        if should_reset:
+            # Clear alerts
             _save_alert_backup(user_dir, state["alerts"])
             state["alerts"] = {"support": [], "resistance": [], "untested": []}
             state["status"].alert_count = 0
-            state["fired_today"] = set()  # Reset dedup tracking
-            state["ma_fired_today"] = set()  # Reset MA dedup
+            state["fired_today"] = set()
+            state["ma_fired_today"] = set()
+            state["ma_last_sides"] = {}
             state["ma_alerts"] = []
+            state["_closes_attempted"] = set()
             _save_alerts(user_dir, state["alerts"])
             _save_ma_alerts(user_dir, [])
-            last_reset_date = today
-            logger.info(f"[{username}] Daily reset: alerts cleared for new trading day.")
+            last_reset_ts = et_now
+            logger.info(f"[{username}] Daily reset at {reset_time_str}: alerts cleared.")
 
-        if state["fetcher"] and state["zones"]:
+            # Rebuild zones
+            if state.get("fetcher"):
+                logger.info(f"[{username}] Rebuilding zones at custom reset time...")
+                await run_user_eod_update(username)
+                state["status"].last_eod_update = now_et().strftime("%Y-%m-%d %H:%M:%S ET")
+                logger.info(f"[{username}] Zone rebuild complete.")
+
+        # --- SCANNER: only runs during market hours (9:30 AM - 4:00 PM ET) ---
+        market_open = (
+            et_now.weekday() < 5
+            and (et_now.hour > 9 or (et_now.hour == 9 and et_now.minute >= 30))
+            and et_now.hour < 16
+        )
+
+        if market_open and state.get("fetcher") and state["zones"]:
             await run_user_scan_cycle(username)
-
-        et_now = now_et()
-        today = et_now.date()
-        if (
-            not state["eod_done_today"]
-            and state["last_eod_date"] != today
-            and et_now.hour >= 16
-            and et_now.weekday() < 5
-            and state["fetcher"]
-        ):
-            await run_user_eod_update(username)
-            state["eod_done_today"] = True
-            state["last_eod_date"] = today
-
-        if is_market_open():
-            state["eod_done_today"] = False
 
         await asyncio.sleep(interval)
 
@@ -958,6 +978,18 @@ async def update_settings(request: Request):
     username = get_current_user(request)
     user_dir = auth.get_user_data_dir(username)
     body = await request.json()
+
+    # Validate reset time — must be outside market hours (9:30-16:00 ET)
+    if "daily_reset_time" in body:
+        try:
+            rt = body["daily_reset_time"]
+            rh, rm = int(rt.split(":")[0]), int(rt.split(":")[1])
+            in_market = (rh > 9 or (rh == 9 and rm >= 30)) and rh < 16
+            if in_market:
+                return JSONResponse({"ok": False, "message": "Reset time cannot be during market hours (9:30 AM - 4:00 PM ET)."}, status_code=400)
+        except (ValueError, IndexError):
+            pass
+
     config.update_config(user_dir, body)
     return JSONResponse({"ok": True, "message": "Settings saved."})
 
@@ -1116,40 +1148,34 @@ async def debug_ma(symbol: str, request: Request):
         "current_price": price,
         "has_closes": closes is not None,
         "closes_count": len(closes) if closes else 0,
-        "prev_close": closes[-1] if closes else None,
+        "last_3_closes": closes[-3:] if closes and len(closes) >= 3 else closes,
         "ma_scanner_enabled": cfg.get("ma_scanner", {}).get("enabled", False),
         "ma_configs": ma_cfgs,
         "ma_values": {},
         "crossover_check": {},
+        "last_sides": {k: v for k, v in state.get("ma_last_sides", {}).items() if symbol in k},
         "fired_today_keys": [k for k in state.get("ma_fired_today", set()) if symbol in k],
     }
 
     if closes and price and len(closes) >= 3:
-        prev_close_val = closes[-2]
-        closes_for_ma = closes[:-1]
-        result["prev_close"] = round(prev_close_val, 2)
-        result["prev_close_note"] = "Using closes[-2] as yesterday"
-        result["closes_for_ma_count"] = len(closes_for_ma)
-
         for mac in ma_cfgs:
             period = mac.get("period", 20)
             ma_type = mac.get("type", "sma")
-            ma_val = compute_ma(closes_for_ma, period, ma_type)
+            ma_val = compute_ma(closes, period, ma_type)
             key = f"{period} {ma_type.upper()}"
+            side_key = f"{symbol}_ma{period}_{ma_type}"
             result["ma_values"][key] = round(ma_val, 4) if ma_val else None
 
             if ma_val:
+                current_side = "above" if price > ma_val else "below" if price < ma_val else "at"
+                tracked_side = state.get("ma_last_sides", {}).get(side_key, "unknown")
                 result["crossover_check"][key] = {
                     "ma_value": round(ma_val, 2),
-                    "prev_close_yesterday": round(prev_close_val, 2),
                     "current_price": round(price, 2),
-                    "prev_strictly_above": prev_close_val > ma_val,
-                    "prev_strictly_below": prev_close_val < ma_val,
-                    "curr_at_or_above": price >= ma_val,
-                    "curr_at_or_below": price <= ma_val,
-                    "would_cross_below": (prev_close_val > ma_val) and (price <= ma_val),
-                    "would_cross_above": (prev_close_val < ma_val) and (price >= ma_val),
-                    "trend": get_ma_trend(closes_for_ma, period, ma_type),
+                    "current_side": current_side,
+                    "tracked_prev_side": tracked_side,
+                    "would_fire": (tracked_side == "above" and current_side in ("below", "at")) or (tracked_side == "below" and current_side in ("above", "at")),
+                    "trend": get_ma_trend(closes, period, ma_type),
                 }
 
     return JSONResponse(result)
