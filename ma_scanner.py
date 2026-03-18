@@ -78,57 +78,62 @@ def check_ma_crossovers(
     daily_closes: list[float],
     ma_configs: list[dict],
     fired_today: set,
+    last_sides: dict = None,
 ) -> list[MACrossAlert]:
     """
-    Check if current price is crossing or touching any configured moving averages.
+    Check if current price is crossing any configured moving averages.
 
-    Uses the PREVIOUS day's close as the reference point for where price was.
-    Uses closes excluding today (daily_closes[:-1]) to compute the MA as it stood
-    at yesterday's close, so the MA value isn't shifted by today's action.
+    Tracks where price was relative to each MA on the PREVIOUS scan.
+    If price was above and is now below (or vice versa), that's a crossover.
     
-    Example: 50 SMA was at 224.50 yesterday. Prev close was 219.40 (below).
-             Today price rises to 225 (above MA) → cross_above fires.
+    Args:
+        last_sides: dict of {alert_key: 'above'|'below'} from previous scan.
+                    Modified in place to track current positions.
     """
     alerts = []
 
-    if len(daily_closes) < 3:
+    if len(daily_closes) < 2:
         return alerts
 
-    # Use second-to-last as reference (yesterday's close)
-    # daily_closes[-1] may be today's close if EOD already ran
-    prev_close = daily_closes[-2]
-    
-    # Compute MA excluding the last bar (so it reflects yesterday's state)
-    # This prevents today's close from shifting the MA value
-    closes_for_ma = daily_closes[:-1]
+    if last_sides is None:
+        last_sides = {}
 
     for mac in ma_configs:
         period = mac.get("period", 20)
         ma_type = mac.get("type", "sma")
 
-        ma_value = compute_ma(closes_for_ma, period, ma_type)
+        ma_value = compute_ma(daily_closes, period, ma_type)
         if ma_value is None:
             continue
 
-        # Where was price at yesterday's close relative to the MA?
-        prev_strictly_above = prev_close > ma_value
-        prev_strictly_below = prev_close < ma_value
+        side_key = f"{symbol}_ma{period}_{ma_type}"
 
-        # Where is price now? Touching counts.
-        curr_at_or_above = current_price >= ma_value
-        curr_at_or_below = current_price <= ma_value
+        # Determine current side
+        if current_price > ma_value:
+            current_side = "above"
+        elif current_price < ma_value:
+            current_side = "below"
+        else:
+            current_side = "at"  # Exactly at the MA
 
+        prev_side = last_sides.get(side_key)
+
+        # Update tracked position
+        if current_side != "at":
+            last_sides[side_key] = current_side
+
+        # Detect crossover
         direction = None
-        if prev_strictly_above and curr_at_or_below:
+        if prev_side == "above" and current_side in ("below", "at"):
             direction = "cross_below"
-        elif prev_strictly_below and curr_at_or_above:
+        elif prev_side == "below" and current_side in ("above", "at"):
             direction = "cross_above"
 
         if direction is None:
             continue
 
-        # Dedup: one alert per MA per direction per day
-        alert_key = f"{symbol}_ma{period}_{ma_type}_{direction}"
+        # Dedup: one alert per MA per ticker per day (any direction)
+        alert_key = f"{symbol}_ma{period}_{ma_type}"
         if alert_key in fired_today:
             continue
         fired_today.add(alert_key)
