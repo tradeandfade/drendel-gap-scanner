@@ -633,12 +633,32 @@ async def user_scan_loop(username: str):
             last_reset_ts = et_now
             logger.info(f"[{username}] Daily reset at {reset_time_str}: alerts cleared.")
 
-            # Rebuild zones
+            # Rebuild zones — full rebuild from historical data
             if state.get("fetcher"):
-                logger.info(f"[{username}] Rebuilding zones at custom reset time...")
-                await run_user_eod_update(username)
+                logger.info(f"[{username}] Full zone rebuild at custom reset time...")
+                lookback = cfg.get("lookback_days", 252)
+                max_gaps = cfg.get("max_gaps_per_symbol", 50)
+                watchlist = config.get_active_symbols(cfg)
+                fetcher = state["fetcher"]
+                if "daily_closes" not in state:
+                    state["daily_closes"] = {}
+                for symbol in watchlist:
+                    try:
+                        bars = await fetcher.fetch_daily_bars(symbol, lookback)
+                        if len(bars) >= 2:
+                            from gap_engine import build_gap_zones
+                            state["zones"][symbol] = build_gap_zones(bars, max_gaps)
+                            state["prev_closes"][symbol] = bars[-1].close
+                            state["daily_closes"][symbol] = [b.close for b in bars]
+                        else:
+                            state["zones"][symbol] = []
+                    except Exception as e:
+                        logger.error(f"[{username}] Rebuild error for {symbol}: {e}")
+                total = sum(len(z) for z in state["zones"].values())
+                state["status"].zone_count = total
                 state["status"].last_eod_update = now_et().strftime("%Y-%m-%d %H:%M:%S ET")
-                logger.info(f"[{username}] Zone rebuild complete.")
+                _save_cached_zones(user_dir, state["zones"])
+                logger.info(f"[{username}] Full rebuild complete: {total} zones")
 
         # --- SCANNER: only runs during market hours (9:30 AM - 4:00 PM ET) ---
         market_open = (
