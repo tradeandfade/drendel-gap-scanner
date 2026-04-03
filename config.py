@@ -26,6 +26,7 @@ DEFAULT_CONFIG = {
         "Default": [],
     },
     "active_watchlists": ["Default"],
+    "starred_symbols": [],
     "daily_reset_time": "09:00",
     "display": {
         "show_untested": True,

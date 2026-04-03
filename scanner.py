@@ -905,7 +905,15 @@ async def do_logout(request: Request):
 async def get_alerts(request: Request):
     username = get_current_user(request)
     state = get_user_state(username)
-    return JSONResponse(state["alerts"])
+    user_dir = auth.get_user_data_dir(username)
+    cfg = config.load_config(user_dir)
+    starred = set(cfg.get("starred_symbols", []))
+    alerts = state["alerts"]
+    # Tag each alert with starred status
+    for key in alerts:
+        for a in alerts[key]:
+            a["starred"] = a["symbol"] in starred
+    return JSONResponse(alerts)
 
 
 @app.post("/api/alerts/clear")
@@ -933,6 +941,26 @@ async def restore_alerts(request: Request):
         _save_alerts(user_dir, backup)
         return JSONResponse({"ok": True, "message": "Alerts restored."})
     return JSONResponse({"ok": False, "message": "No backup available."}, status_code=404)
+
+
+@app.post("/api/star")
+async def toggle_star(request: Request):
+    username = get_current_user(request)
+    user_dir = auth.get_user_data_dir(username)
+    body = await request.json()
+    symbol = body.get("symbol", "").upper()
+    if not symbol:
+        return JSONResponse({"ok": False}, status_code=400)
+    cfg = config.load_config(user_dir)
+    starred = cfg.get("starred_symbols", [])
+    if symbol in starred:
+        starred.remove(symbol)
+        is_starred = False
+    else:
+        starred.append(symbol)
+        is_starred = True
+    config.update_config(user_dir, {"starred_symbols": starred})
+    return JSONResponse({"ok": True, "symbol": symbol, "starred": is_starred})
 
 
 @app.get("/api/ma-alerts")

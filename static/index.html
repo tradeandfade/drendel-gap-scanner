@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Drendel Gap Scanner</title>
-  <link rel="stylesheet" href="/static/style.css?v=20">
+  <link rel="stylesheet" href="/static/style.css?v=21">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23080808'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%237c9a5e'>G</text></svg>">
 </head>
 <body>
@@ -98,11 +98,12 @@
         <div class="setup-step"><span class="step-number">4</span><h3 class="step-title">Optional: Extra Data Providers</h3>
           <div class="setup-keys-form"><div class="form-group"><label class="form-label">Polygon.io Key</label><input type="text" id="setup-polygon-key" placeholder="Key"><div class="form-hint-visible">Free at <a href="https://polygon.io" target="_blank" style="color:var(--olive-bright)">polygon.io</a></div></div><div class="form-group"><label class="form-label">FMP Key</label><input type="text" id="setup-fmp-key" placeholder="Key"><div class="form-hint-visible">Free at <a href="https://site.financialmodelingprep.com" target="_blank" style="color:var(--olive-bright)">financialmodelingprep.com</a></div></div><div class="btn-row"><button class="btn btn-primary" onclick="saveExtraKeys()">Save Keys</button></div></div>
         </div>
-        <div class="setup-step"><span class="step-number">5</span><h3 class="step-title">Add Watchlist & Scan</h3><div class="step-body">Go to Settings → add symbols → Save & Reinitialize. The scanner runs during market hours.</div></div>
+        <div class="setup-step"><span class="step-number">5</span><h3 class="step-title">Add Watchlist & Scan</h3><div class="step-body">Go to Settings → add symbols → Save & Reinitialize. The scanner runs during market hours (9:30 AM - 4:00 PM ET).<br><br>Star ★ your top watch stocks in the watchlist — their alert cards will appear in <strong style="color:var(--starred);">gold</strong> so they stand out.</div></div>
+        <div class="setup-step"><span class="step-number">6</span><h3 class="step-title">Understanding Alert Colors</h3><div class="step-body"><strong style="color:var(--support);">Support Gaps (Green)</strong> — Price pulling back into a gap-up zone. Potential bounce area.<br><strong style="color:var(--resistance);">Resistance Gaps (Red)</strong> — Price pushing up into a gap-down zone. Potential reversal area.<br><strong style="color:var(--untested);">Untested Gaps (Blue)</strong> — New gaps that haven't been tested yet on a subsequent day.<br><strong style="color:var(--starred);">★ Starred Stocks (Gold)</strong> — Your top watches. These cards appear in gold regardless of gap type so they're easy to spot.<br><br><strong>Special Badges:</strong><br>• <strong style="color:#6aaa5c;">▲ STACKED</strong> — Support gap where all MAs are bullishly aligned (10 > 20 > 50 > 200 SMA)<br>• <strong style="color:#c45c4c;">▼ STACKED</strong> — Resistance gap where all MAs are bearishly aligned<br><br>Each zone fires one alert per day. Alerts reset at your configured time (Settings → Daily Reset Time).</div></div>
       </div>
     </div>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=20"></script>
+  <script src="/static/app.js?v=21"></script>
 </body>
 </html>
