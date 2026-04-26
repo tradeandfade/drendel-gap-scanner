@@ -22,6 +22,12 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "moving_averages": [],
     },
+    "ugly_gap": {
+        "close_pct": 25,           # D1 close must be in bottom N% of D1 range
+        "gap_pct": 50,             # D2 open must be at/above N% of D1 range
+        "scan_interval_seconds": 15,   # cadence of Pass B during morning window
+        "scan_window_minutes": 15,     # how many minutes after 9:30 to keep polling
+    },
     "watchlists": {
         "Default": [],
     },

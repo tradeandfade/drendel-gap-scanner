@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Drendel Gap Scanner</title>
-  <link rel="stylesheet" href="/static/style.css?v=21">
+  <link rel="stylesheet" href="/static/style.css?v=22">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23080808'/><text x='16' y='22' text-anchor='middle' font-size='18' font-weight='bold' fill='%237c9a5e'>G</text></svg>">
 </head>
 <body>
   <div id="init-overlay" class="init-overlay"><div class="init-content"><div style="width:40px;height:40px;font-size:18px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--olive);color:#000;font-weight:700;margin:0 auto 12px;">G</div><div id="init-status-text" style="font-size:12px;color:var(--text-2);margin-bottom:16px;">Loading...</div><div class="init-progress"><div id="init-progress-bar" class="init-progress-bar"></div></div><div id="init-detail" style="font-family:'DM Mono';font-size:9px;color:var(--text-4);margin-top:8px;min-height:12px;"></div></div></div>
   <div id="toast-container" class="toast-container"></div>
   <div id="chart-modal" class="chart-modal" style="display:none;"><div class="chart-modal-backdrop" onclick="closeChart()"></div><div class="chart-modal-content"><div class="chart-header"><button class="chart-nav" onclick="chartPrev()" title="Previous">◀</button><span id="chart-symbol" class="chart-symbol"></span><button class="chart-nav" onclick="chartNext()" title="Next">▶</button><div id="chart-tf-bar" style="display:flex;gap:2px;margin-left:auto;"></div><button class="chart-close" onclick="closeChart()">✕</button></div><div id="chart-container" class="chart-container"></div></div></div>
-  <header class="header"><div class="header-inner"><div class="logo"><div class="logo-icon">G</div><div class="logo-text">DRENDEL <span>SCANNER</span></div></div><div class="header-status"><div class="status-pill"><span id="symbol-count">0</span> sym</div><div class="status-pill"><span id="zone-count">0</span> zones</div><div class="status-pill"><div id="status-dot" class="status-dot"></div><span id="status-text">—</span></div><button class="btn btn-secondary" onclick="forceRefresh()" style="padding:2px 6px;font-size:9px;">↻</button><button class="btn btn-secondary" onclick="doLogout()" style="padding:2px 6px;font-size:9px;">Logout</button><nav class="tab-bar"><button class="tab-btn active" data-tab="scanner">Scanner <span class="tab-count">0</span></button><button class="tab-btn" data-tab="zones">Zones</button><button class="tab-btn" data-tab="settings">Settings</button><button class="tab-btn" data-tab="setup">Setup</button></nav></div></div></header>
+  <header class="header"><div class="header-inner"><div class="logo"><div class="logo-icon">G</div><div class="logo-text">DRENDEL <span>SCANNER</span></div></div><div class="header-status"><div class="status-pill"><span id="symbol-count">0</span> sym</div><div class="status-pill"><span id="zone-count">0</span> zones</div><div class="status-pill"><div id="status-dot" class="status-dot"></div><span id="status-text">—</span></div><button class="btn btn-secondary" onclick="forceRefresh()" style="padding:2px 6px;font-size:9px;">↻</button><button class="btn btn-secondary" onclick="doLogout()" style="padding:2px 6px;font-size:9px;">Logout</button><nav class="tab-bar"><button class="tab-btn active" data-tab="scanner">Scanner <span class="tab-count">0</span></button><button class="tab-btn" data-tab="ugly">Ugly→Gap <span class="tab-count" id="ugly-tab-count">0</span></button><button class="tab-btn" data-tab="zones">Zones</button><button class="tab-btn" data-tab="settings">Settings</button><button class="tab-btn" data-tab="setup">Setup</button></nav></div></div></header>
   <main class="main">
     <!-- SCANNER -->
     <div id="tab-scanner" class="tab-content active">
@@ -24,6 +24,25 @@
         </div>
       </div>
       <div id="undo-bar" class="undo-bar" style="display:none;"><span>Cleared.</span><button class="btn btn-secondary" onclick="undoClearAlerts()" style="padding:2px 8px;font-size:9px;">Undo</button><button class="btn btn-ghost" onclick="dismissUndo()">✕</button></div>
+    </div>
+    <!-- UGLY → GAP UP -->
+    <div id="tab-ugly" class="tab-content">
+      <div style="display:flex;gap:12px;margin-bottom:8px;font-family:'DM Mono';font-size:9px;color:var(--text-4);flex-wrap:wrap;align-items:center;">
+        <span>Pass A candidates: <span id="ugly-cand-count" style="color:var(--text-3)">0</span></span>
+        <span>Triggers today: <span id="ugly-fired-count" style="color:var(--text-3)">0</span></span>
+        <span style="margin-left:auto;">D1 close ≤ <span id="ugly-cp-display" style="color:var(--text-3)">25</span>% &nbsp;·&nbsp; D2 open ≥ <span id="ugly-gp-display" style="color:var(--text-3)">50</span>%</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:12px;">
+        <div class="settings-card" style="display:flex;flex-direction:column;">
+          <div class="settings-card-title">Triggered Signals</div>
+          <div id="ugly-alerts-list" style="flex:1;overflow-y:auto;"></div>
+        </div>
+        <div class="settings-card" style="display:flex;flex-direction:column;">
+          <div class="settings-card-title">Pending Candidates</div>
+          <div style="font-size:9px;color:var(--text-4);margin-bottom:6px;">D1 ugly closes waiting for D2 open print.</div>
+          <div id="ugly-cand-list" style="flex:1;overflow-y:auto;"></div>
+        </div>
+      </div>
     </div>
     <!-- ZONES -->
     <div id="tab-zones" class="tab-content"><div style="margin-bottom:8px;"><input type="text" id="zone-search" placeholder="Search by ticker..." oninput="renderZoneTable()" style="font-size:10px;max-width:200px;"></div><div id="zone-explorer-content"><div class="loading-overlay"><div class="loading-spinner"></div></div></div></div>
@@ -76,6 +95,14 @@
             <button class="btn btn-secondary" onclick="addFilter()" style="margin-top:6px;">+ Add Filter</button>
             <div class="btn-row"><button class="btn btn-primary" onclick="saveFilters()">Save Filters</button></div>
           </div>
+          <!-- Ugly→Gap settings -->
+          <div class="settings-card">
+            <div class="settings-card-title">Ugly Close → Gap Up</div>
+            <div class="form-group"><label class="form-label">D1 Close ≤ (% of D1 range)</label><input type="number" id="setting-ugly-close-pct" value="25" min="0" max="100" step="5"><div class="form-hint-visible">Lower = stricter (only the weakest closes qualify). Default 25.</div></div>
+            <div class="form-group"><label class="form-label">D2 Open ≥ (% of D1 range)</label><input type="number" id="setting-ugly-gap-pct" value="50" min="0" max="200" step="5"><div class="form-hint-visible">Higher = stricter (only stronger gaps qualify). Default 50.</div></div>
+            <div class="form-group"><label class="form-label">Pass B window after open (min)</label><input type="number" id="setting-ugly-window" value="15" min="1" max="60"><div class="form-hint-visible">How long after 9:30 ET to keep polling for D2 open prints.</div></div>
+            <div class="btn-row"><button class="btn btn-primary" onclick="saveUglyConfig()">Save</button></div>
+          </div>
           <!-- MA Scanner -->
           <div class="settings-card">
             <div class="settings-card-title">MA Crossover Scanner</div>
@@ -104,6 +131,6 @@
     </div>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="/static/app.js?v=21"></script>
+  <script src="/static/app.js?v=22"></script>
 </body>
 </html>

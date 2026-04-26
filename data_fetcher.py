@@ -208,6 +208,39 @@ class AlpacaFetcher:
 
         return prices
 
+    async def fetch_open_price(self, symbol: str, target_date: date) -> Optional[float]:
+        """Return the official 9:30 ET opening print for `symbol` on `target_date`.
+
+        Pulls the 1-minute bar starting at 9:30:00 ET and returns its open.
+        Returns None if the bar isn't available yet (slow feed / halt / pre-open).
+        """
+        try:
+            client = await self._get_client()
+            # Window: 9:30 to 9:32 ET on the target date, expressed as RFC3339 with -04:00/-05:00.
+            start_dt = datetime(target_date.year, target_date.month, target_date.day, 9, 30, tzinfo=ET)
+            end_dt = datetime(target_date.year, target_date.month, target_date.day, 9, 32, tzinfo=ET)
+
+            resp = await client.get(
+                f"{self.data_url}/v2/stocks/{symbol}/bars",
+                params={
+                    "start": start_dt.isoformat(),
+                    "end": end_dt.isoformat(),
+                    "timeframe": "1Min",
+                    "limit": 5,
+                    "adjustment": "split",
+                    "feed": "iex",
+                    "sort": "asc",
+                },
+            )
+
+            if resp.status_code == 200:
+                raw_bars = resp.json().get("bars", [])
+                if raw_bars:
+                    return float(raw_bars[0]["o"])
+        except Exception as e:
+            logger.error(f"Error fetching open for {symbol}: {e}")
+        return None
+
     async def fetch_latest_daily_bar(self, symbol: str) -> Optional[BarData]:
         """Fetch the most recent completed daily bar for a symbol."""
         try:

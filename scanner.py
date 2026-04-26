@@ -21,6 +21,7 @@ from polygon_fetcher import PolygonFetcher
 from fmp_fetcher import FMPFetcher
 from gap_engine import build_gap_zones, check_zone_alerts, update_zones_eod
 from ma_scanner import check_ma_crossovers
+from ugly_gap_scanner import run_pass_a, run_pass_b
 from models import ScannerStatus
 from utils import setup_logging, is_market_open, now_et
 
@@ -60,6 +61,10 @@ def get_user_state(username: str) -> dict:
             "status": ScannerStatus(),
             "eod_done_today": False,
             "last_eod_date": None,
+            "ugly_candidates": [],
+            "ugly_alerts": [],
+            "ugly_resolved": set(),
+            "ugly_fired_today": set(),
         }
     return user_scanners[username]
 
@@ -162,6 +167,11 @@ async def initialize_user_scanner(username: str):
         if any(saved_alerts.get(k) for k in ['support', 'resistance', 'untested']):
             state["alerts"] = saved_alerts
             state["status"].alert_count = sum(len(v) for v in saved_alerts.values())
+
+        # Load persisted ugly-gap candidates + triggered alerts
+        state["ugly_candidates"] = _load_ugly_candidates(user_dir)
+        state["ugly_alerts"] = _load_ugly_alerts(user_dir)
+        state["ugly_fired_today"] = {a["symbol"] for a in state["ugly_alerts"]}
 
         # Fetch prices
         try:
@@ -484,6 +494,54 @@ def _load_ma_alerts(user_dir: Path) -> list:
     return []
 
 
+def _save_ugly_candidates(user_dir: Path, candidates: list):
+    """Save Pass A candidates (after-close ugly bars) to disk."""
+    import json
+    path = user_dir / "ugly_candidates.json"
+    try:
+        with open(path, "w") as f:
+            json.dump([c.to_dict() if hasattr(c, "to_dict") else c for c in candidates], f)
+    except Exception:
+        pass
+
+
+def _load_ugly_candidates(user_dir: Path) -> list:
+    """Load Pass A candidates from disk."""
+    import json
+    path = user_dir / "ugly_candidates.json"
+    if path.exists():
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+
+def _save_ugly_alerts(user_dir: Path, alerts: list):
+    """Save Pass B triggered alerts to disk."""
+    import json
+    path = user_dir / "ugly_alerts.json"
+    try:
+        with open(path, "w") as f:
+            json.dump(alerts, f)
+    except Exception:
+        pass
+
+
+def _load_ugly_alerts(user_dir: Path) -> list:
+    """Load Pass B triggered alerts from disk."""
+    import json
+    path = user_dir / "ugly_alerts.json"
+    if path.exists():
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+
 def _save_cached_zones(user_dir: Path, zones_dict: dict):
     """Cache zones to disk for instant login."""
     import json
@@ -587,6 +645,73 @@ async def _rebuild_zones_background(username, fetcher, watchlist, lookback, max_
     logger.info(f"[{username}] EOD update complete. {state['status'].zone_count} active zones.")
 
 
+async def run_user_ugly_pass_b(username: str):
+    """Pass B: poll D2 opens for outstanding ugly candidates, fire alerts.
+
+    Runs every ~15s during the morning window. Each candidate is resolved at
+    most once (kept in `ugly_resolved` so we stop hitting the API once we
+    have its open price).
+    """
+    state = get_user_state(username)
+    user_dir = auth.get_user_data_dir(username)
+    cfg = config.load_config(user_dir)
+    fetcher = state.get("fetcher")
+    if not fetcher:
+        return
+
+    candidates = state.get("ugly_candidates")
+    if candidates is None:
+        candidates = _load_ugly_candidates(user_dir)
+        state["ugly_candidates"] = candidates
+
+    if not candidates:
+        return
+
+    if "ugly_resolved" not in state:
+        state["ugly_resolved"] = set()
+    if "ugly_alerts" not in state:
+        state["ugly_alerts"] = _load_ugly_alerts(user_dir)
+    if "ugly_fired_today" not in state:
+        state["ugly_fired_today"] = {a["symbol"] for a in state["ugly_alerts"]}
+
+    pending = [c for c in candidates if c["symbol"] not in state["ugly_resolved"]]
+    if not pending:
+        return
+
+    today = now_et().date()
+    opens: dict[str, float] = {}
+    for c in pending:
+        sym = c["symbol"]
+        try:
+            op = await fetcher.fetch_open_price(sym, today)
+        except Exception as e:
+            logger.warning(f"[{username}] Ugly Pass B fetch_open_price({sym}) failed: {e}")
+            continue
+        if op is not None:
+            opens[sym] = op
+            state["ugly_resolved"].add(sym)
+
+    if not opens:
+        return
+
+    ugly_cfg = cfg.get("ugly_gap", {})
+    gap_pct = ugly_cfg.get("gap_pct", 50)
+    new_alerts = run_pass_b(pending, opens, gap_pct)
+
+    fired_now = []
+    for a in new_alerts:
+        if a.symbol in state["ugly_fired_today"]:
+            continue
+        state["ugly_fired_today"].add(a.symbol)
+        a.timestamp = now_et().strftime("%Y-%m-%d %H:%M:%S ET")
+        fired_now.append(a.to_dict())
+
+    if fired_now:
+        state["ugly_alerts"].extend(fired_now)
+        _save_ugly_alerts(user_dir, state["ugly_alerts"])
+        logger.info(f"[{username}] Ugly Pass B: {len(fired_now)} new triggers ({len(state['ugly_alerts'])} total today)")
+
+
 async def user_scan_loop(username: str):
     state = get_user_state(username)
     while not state["status"].initialized:
@@ -628,8 +753,11 @@ async def user_scan_loop(username: str):
             state["ma_last_sides"] = {}
             state["ma_alerts"] = []
             state["_closes_attempted"] = set()
+            state["ugly_alerts"] = []
+            state["ugly_fired_today"] = set()
             _save_alerts(user_dir, state["alerts"])
             _save_ma_alerts(user_dir, [])
+            _save_ugly_alerts(user_dir, [])
             last_reset_ts = et_now
             logger.info(f"[{username}] Daily reset at {reset_time_str}: alerts cleared.")
 
@@ -642,6 +770,7 @@ async def user_scan_loop(username: str):
                 fetcher = state["fetcher"]
                 if "daily_closes" not in state:
                     state["daily_closes"] = {}
+                latest_bars = {}
                 for symbol in watchlist:
                     try:
                         bars = await fetcher.fetch_daily_bars(symbol, lookback)
@@ -650,6 +779,7 @@ async def user_scan_loop(username: str):
                             state["zones"][symbol] = build_gap_zones(bars, max_gaps)
                             state["prev_closes"][symbol] = bars[-1].close
                             state["daily_closes"][symbol] = [b.close for b in bars]
+                            latest_bars[symbol] = bars[-1]
                         else:
                             state["zones"][symbol] = []
                     except Exception as e:
@@ -659,6 +789,14 @@ async def user_scan_loop(username: str):
                 state["status"].last_eod_update = now_et().strftime("%Y-%m-%d %H:%M:%S ET")
                 _save_cached_zones(user_dir, state["zones"])
                 logger.info(f"[{username}] Full rebuild complete: {total} zones")
+
+                # === UGLY-CLOSE PASS A ===
+                ugly_cfg = cfg.get("ugly_gap", {})
+                close_pct = ugly_cfg.get("close_pct", 25)
+                candidates = run_pass_a(latest_bars, close_pct)
+                state["ugly_candidates"] = [c.to_dict() for c in candidates]
+                _save_ugly_candidates(user_dir, candidates)
+                logger.info(f"[{username}] Ugly Pass A: {len(candidates)} candidates at close_pct={close_pct}")
 
         # --- SCANNER: only runs during market hours (9:30 AM - 4:00 PM ET) ---
         market_open = (
@@ -670,7 +808,34 @@ async def user_scan_loop(username: str):
         if market_open and state.get("fetcher") and state["zones"]:
             await run_user_scan_cycle(username)
 
-        await asyncio.sleep(interval)
+        # --- UGLY-CLOSE PASS B: fast cadence during morning window ---
+        ugly_cfg = cfg.get("ugly_gap", {})
+        ugly_window_min = ugly_cfg.get("scan_window_minutes", 15)
+        ugly_interval = ugly_cfg.get("scan_interval_seconds", 15)
+
+        # Open is at 9:30 ET; window runs 9:30 -> 9:30 + ugly_window_min
+        in_morning_window = (
+            et_now.weekday() < 5
+            and et_now.hour == 9
+            and et_now.minute >= 30
+            and et_now.minute < 30 + ugly_window_min
+        ) or (
+            # window can extend past 9:59 if user picks > 30 min
+            et_now.weekday() < 5
+            and et_now.hour == 10
+            and et_now.minute < max(0, 30 + ugly_window_min - 60)
+        )
+
+        if in_morning_window and state.get("fetcher"):
+            try:
+                await run_user_ugly_pass_b(username)
+            except Exception as e:
+                logger.error(f"[{username}] Ugly Pass B error: {e}")
+            sleep_for = ugly_interval
+        else:
+            sleep_for = interval
+
+        await asyncio.sleep(sleep_for)
 
 
 async def reinitialize_user(username: str):
@@ -695,6 +860,10 @@ async def reinitialize_user(username: str):
         "status": ScannerStatus(),
         "eod_done_today": False,
         "last_eod_date": None,
+        "ugly_candidates": [],
+        "ugly_alerts": [],
+        "ugly_resolved": set(),
+        "ugly_fired_today": set(),
     }
 
     await initialize_user_scanner(username)
@@ -968,6 +1137,17 @@ async def get_ma_alerts(request: Request):
     username = get_current_user(request)
     state = get_user_state(username)
     return JSONResponse(state.get("ma_alerts", []))
+
+
+@app.get("/api/ugly-alerts")
+async def get_ugly_alerts(request: Request):
+    """Triggered ugly-close -> gap-up alerts plus the pending candidate list."""
+    username = get_current_user(request)
+    state = get_user_state(username)
+    return JSONResponse({
+        "alerts": state.get("ugly_alerts", []),
+        "candidates": state.get("ugly_candidates", []),
+    })
 
 
 @app.get("/api/zones")
